@@ -20,7 +20,7 @@ fun interface AudioTrackScanner {
 
 class AudioScanner(private val context: Context) : AudioTrackScanner {
 
-    suspend fun scanAudioTracks(): ScanResult = withContext(Dispatchers.IO) {
+    override suspend fun scanAudioTracks(): ScanResult = withContext(Dispatchers.IO) {
         val tracks = mutableListOf<AudioTrack>()
         val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
 

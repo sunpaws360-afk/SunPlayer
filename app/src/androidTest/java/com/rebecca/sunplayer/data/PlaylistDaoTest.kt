@@ -73,6 +73,36 @@ class PlaylistDaoTest {
         assertEquals(emptyList<Long>(), playlistDao.getTrackIds(playlistId))
     }
 
+    @Test
+    fun reorderSupportsFirstLastAndSamePosition() = runBlocking {
+        val tracks = listOf(track(20L, "A"), track(21L, "B"), track(22L, "C"))
+        trackDao.replaceAll(tracks.map(TrackEntity::fromAudioTrack))
+        val playlistId = playlistDao.insertPlaylist(PlaylistEntity(0L, "Order", 1L, 1L))
+        tracks.forEachIndexed { index, track ->
+            playlistDao.addTrack(playlistId, track.id, index.toLong())
+        }
+
+        playlistDao.moveTrack(playlistId, 1L, 2, 4L)
+        assertEquals(listOf(21L, 22L, 20L), playlistDao.getTrackIds(playlistId))
+        playlistDao.moveTrack(playlistId, 20L, 0, 5L)
+        assertEquals(listOf(20L, 21L, 22L), playlistDao.getTrackIds(playlistId))
+        playlistDao.moveTrack(playlistId, 21L, 1, 6L)
+        assertEquals(listOf(20L, 21L, 22L), playlistDao.getTrackIds(playlistId))
+    }
+
+    @Test
+    fun emptyAndSingleTrackPlaylistsAreValid() = runBlocking {
+        val emptyId = playlistDao.insertPlaylist(PlaylistEntity(0L, "Empty", 1L, 1L))
+        assertEquals(emptyList<Long>(), playlistDao.getTrackIds(emptyId))
+
+        val track = track(30L, "Only")
+        trackDao.replaceAll(listOf(TrackEntity.fromAudioTrack(track)))
+        val singleId = playlistDao.insertPlaylist(PlaylistEntity(0L, "Single", 1L, 1L))
+        playlistDao.addTrack(singleId, track.id, 2L)
+        playlistDao.moveTrack(singleId, track.id, 0, 3L)
+        assertEquals(listOf(track.id), playlistDao.getTrackIds(singleId))
+    }
+
     private fun track(id: Long, title: String): AudioTrack = AudioTrack(
         id = id,
         uri = android.net.Uri.EMPTY,

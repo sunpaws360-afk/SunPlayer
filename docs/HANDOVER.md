@@ -50,6 +50,12 @@ Playlists and durable user collections.
   a partial successful result.
 - Added a repository regression test proving failed scans retain indexed tracks.
 - Prepared v1.3.0 version metadata, tagged-release CI artifacts, and release notes.
+- Fixed the scanner interface implementation and made scan UI loading state
+  exception-safe.
+- Added unavailable playlist rows through a left-join projection.
+- Added v2-to-v3 migration execution coverage and playlist reorder edge cases.
+- Added protected release-signing configuration and an emulator instrumentation
+  CI job.
 - Preserved existing Favorites behavior and schema migration.
 - Added playlist Room instrumentation coverage for CRUD, ordering, duplicate
   membership, and missing-track handling.
@@ -58,14 +64,13 @@ Playlists and durable user collections.
 ## LEFT
 
 - Run the full CI build on Java 17.
-- Run instrumentation tests on an Android emulator or physical device.
+- Confirm the new emulator instrumentation job passes on Java 17.
 - Add explicit migration upgrade tests from a persisted version 2 database.
 - Add scanner tests for empty-success versus failure and permission/query errors.
-- Show missing playlist entries in the detail UI as unavailable placeholders.
 - Add playlist-to-queue without immediately starting playback.
 - Add library destinations/tabs for playlists and favorites.
 - Add persistent queue and playback history.
-- Replace debug release signing with protected release signing.
+- Configure the protected release-signing secrets for production tags.
 - Push a `v1.3.0` tag after CI approval to publish the development release.
 - Improve incremental/resumable scanning, artwork, metadata editing,
   accessibility, localization, backup/restore, Android Auto, and widgets.
@@ -91,8 +96,10 @@ Playlists and durable user collections.
   unavailable placeholder.
 - Playlist membership is intentionally not foreign-keyed to `tracks`, so a
   MediaStore rescan cannot destroy user playlist structure.
-- Release builds still use the existing debug signing configuration.
-- The v1.3.0 GitHub release is development-only until protected signing is configured.
+- Release builds are unsigned unless signing environment variables are present;
+  tagged CI releases require protected signing secrets.
+- Local Gradle verification remains blocked by OpenJDK 25; CI must execute the
+  Java 17 build and emulator jobs before calling the release verified.
 - No smart playlists, AI, downloads, recording, network providers, DSP, or
   advanced Android integrations are part of this phase.
 
@@ -162,8 +169,8 @@ BLOCKED:
 - Local Gradle execution stops on OpenJDK 25 before Kotlin compilation.
 
 KNOWN LIMITATIONS:
-- Missing playlist tracks remain stored but are currently hidden from the detail
-  list because available tracks are resolved through an inner join.
+- Missing playlist tracks remain stored and are shown as unavailable entries;
+  playback excludes them until the file returns or the user removes them.
 
 NEXT PHASE:
 Verify CI/device behavior, then improve unavailable-track UI and navigation tabs.

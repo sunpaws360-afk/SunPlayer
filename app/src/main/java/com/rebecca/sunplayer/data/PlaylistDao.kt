@@ -38,11 +38,14 @@ interface PlaylistDao {
     suspend fun removeTrack(playlistId: Long, trackId: Long)
 
     @Query(
-        "SELECT t.* FROM tracks t " +
-            "INNER JOIN playlist_tracks pt ON pt.trackId = t.id " +
+        "SELECT pt.playlistId, pt.trackId, pt.position, pt.addedAt, " +
+            "t.uri AS trackUri, t.title AS trackTitle, t.artist AS trackArtist, " +
+            "t.album AS trackAlbum, t.durationMs AS trackDurationMs, " +
+            "t.sizeBytes AS trackSizeBytes " +
+            "FROM playlist_tracks pt LEFT JOIN tracks t ON pt.trackId = t.id " +
             "WHERE pt.playlistId = :playlistId ORDER BY pt.position ASC"
     )
-    fun observePlaylistTracks(playlistId: Long): Flow<List<TrackEntity>>
+    fun observePlaylistEntries(playlistId: Long): Flow<List<PlaylistTrackRow>>
 
     @Query("SELECT trackId FROM playlist_tracks WHERE playlistId = :playlistId ORDER BY position ASC")
     suspend fun getTrackIds(playlistId: Long): List<Long>

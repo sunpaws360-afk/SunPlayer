@@ -2,7 +2,7 @@
 
 ## Current Phase: v1.3.0 foundation release
 - **Baseline**: Durable Room library, Media3 playback, queue, Favorites, and Playlists.
-- **Current focus**: Release the durable foundation and verify migrations and instrumentation on Java 17/device infrastructure.
+- **Current focus**: Stabilization and Java 17 CI verification before publishing v1.3.0.
 
 ## Milestone Progress
 - [x] Phase 0: Project foundation & CI build pipeline
@@ -14,7 +14,8 @@
 - [x] Phase 5: Shuffle & Repeat Modes (v1.2.0)
 - [x] Phase 6: Durable Favorites and Playlists
 - [x] Phase 7: Failed-scan protection and regression coverage
-- [ ] Phase 8: Missing playlist item UI and library navigation
-- [ ] Phase 9: Playback history and ratings
-- [ ] Phase 10: Incremental/resumable scanning
-- [ ] Phase 11: Audio Equalizer / DSP
+- [x] Phase 8: Missing playlist item UI and migration/edge-case coverage
+- [ ] Phase 9: Library navigation
+- [ ] Phase 10: Playback history and ratings
+- [ ] Phase 11: Incremental/resumable scanning
+- [ ] Phase 12: Audio Equalizer / DSP

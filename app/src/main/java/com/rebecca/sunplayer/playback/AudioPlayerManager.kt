@@ -58,11 +58,16 @@ class AudioPlayerManager(context: Context) {
 
     init {
         controllerFuture.addListener({
-            controller = controllerFuture.get()
-            controller?.addListener(controllerListener)
-            if (originalPlaylist.isNotEmpty()) {
-                applyPlaylist(pendingStartIndex, startPlayback = false)
-            } else {
+            try {
+                controller = controllerFuture.get()
+                controller?.addListener(controllerListener)
+                if (originalPlaylist.isNotEmpty()) {
+                    applyPlaylist(pendingStartIndex, startPlayback = false)
+                } else {
+                    updateState()
+                }
+            } catch (error: Exception) {
+                controller = null
                 updateState()
             }
         }, MoreExecutors.directExecutor())

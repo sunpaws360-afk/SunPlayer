@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rebecca.sunplayer.data.PlaylistSummary
+import com.rebecca.sunplayer.data.PlaylistTrackRow
 import com.rebecca.sunplayer.model.AudioTrack
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,7 +57,7 @@ fun PlaylistDialog(
     playlists: List<PlaylistSummary>,
     allTracks: List<AudioTrack>,
     selectedPlaylistId: Long?,
-    selectedPlaylistTracks: List<AudioTrack>,
+    selectedPlaylistEntries: List<PlaylistTrackRow>,
     onSelectPlaylist: (Long) -> Unit,
     onBack: () -> Unit,
     onCreatePlaylist: (String) -> Unit,
@@ -141,16 +142,20 @@ fun PlaylistDialog(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = { onPlay(selectedPlaylistTracks, false) },
-                        enabled = selectedPlaylistTracks.isNotEmpty()
+                        onClick = {
+                            onPlay(selectedPlaylistEntries.mapNotNull(PlaylistTrackRow::toAudioTrackOrNull), false)
+                        },
+                        enabled = selectedPlaylistEntries.any { it.isAvailable }
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
                         Spacer(Modifier.size(6.dp))
                         Text("Play")
                     }
                     Button(
-                        onClick = { onPlay(selectedPlaylistTracks, true) },
-                        enabled = selectedPlaylistTracks.isNotEmpty()
+                        onClick = {
+                            onPlay(selectedPlaylistEntries.mapNotNull(PlaylistTrackRow::toAudioTrackOrNull), true)
+                        },
+                        enabled = selectedPlaylistEntries.any { it.isAvailable }
                     ) {
                         Icon(Icons.Default.Shuffle, contentDescription = null)
                         Spacer(Modifier.size(6.dp))
@@ -162,15 +167,24 @@ fun PlaylistDialog(
                 }
                 Spacer(Modifier.height(8.dp))
                 LazyColumn {
-                    itemsIndexed(selectedPlaylistTracks, key = { _, track -> track.id }) { index, track ->
+                    itemsIndexed(selectedPlaylistEntries, key = { _, entry -> entry.trackId }) { index, entry ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(
-                                    track.artist,
+                                    entry.trackTitle ?: "Unavailable track",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (entry.isAvailable) {
+                                        MaterialTheme.colorScheme.onSurface
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                                Text(
+                                    if (entry.isAvailable) entry.trackArtist ?: "Unknown Artist" else "Unavailable",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
@@ -178,18 +192,18 @@ fun PlaylistDialog(
                                 )
                             }
                             IconButton(
-                                onClick = { onMoveTrack(selectedPlaylist.id, track.id, index - 1) },
+                                onClick = { onMoveTrack(selectedPlaylist.id, entry.trackId, index - 1) },
                                 enabled = index > 0
                             ) {
                                 Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
                             }
                             IconButton(
-                                onClick = { onMoveTrack(selectedPlaylist.id, track.id, index + 1) },
-                                enabled = index < selectedPlaylistTracks.lastIndex
+                                onClick = { onMoveTrack(selectedPlaylist.id, entry.trackId, index + 1) },
+                                enabled = index < selectedPlaylistEntries.lastIndex
                             ) {
                                 Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
                             }
-                            IconButton(onClick = { onRemoveTrack(selectedPlaylist.id, track.id) }) {
+                            IconButton(onClick = { onRemoveTrack(selectedPlaylist.id, entry.trackId) }) {
                                 Icon(Icons.Default.Close, contentDescription = "Remove track")
                             }
                         }

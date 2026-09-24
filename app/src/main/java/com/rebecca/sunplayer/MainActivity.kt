@@ -38,6 +38,7 @@ import com.rebecca.sunplayer.model.AudioTrack
 import com.rebecca.sunplayer.playback.AudioPlayerManager
 import com.rebecca.sunplayer.playback.RepeatMode
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 enum class SortOption {
@@ -108,8 +109,10 @@ fun MainScreen(playerManager: AudioPlayerManager) {
     var isPlaylistsExpanded by remember { mutableStateOf(false) }
     var selectedPlaylistId by remember { mutableStateOf<Long?>(null) }
     var playlistTrackToAdd by remember { mutableStateOf<AudioTrack?>(null) }
-    val selectedPlaylistTracks by libraryRepository
-        .observePlaylistTracks(selectedPlaylistId ?: -1L)
+    val selectedPlaylistFlow = remember(selectedPlaylistId) {
+        libraryRepository.observePlaylistEntries(selectedPlaylistId ?: -1L)
+    }
+    val selectedPlaylistEntries by selectedPlaylistFlow
         .collectAsState(initial = emptyList())
 
     val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -121,11 +124,18 @@ fun MainScreen(playerManager: AudioPlayerManager) {
     fun scanLibrary() {
         isLoading = true
         coroutineScope.launch {
-            scanError = when (val result = libraryRepository.scanAndStore(scanner)) {
-                is ScanResult.Success -> null
-                is ScanResult.Failure -> result.error.message ?: "Unable to scan music library"
+            try {
+                scanError = when (val result = libraryRepository.scanAndStore(scanner)) {
+                    is ScanResult.Success -> null
+                    is ScanResult.Failure -> result.error.message ?: "Unable to scan music library"
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                scanError = error.message ?: "Unable to refresh music library"
+            } finally {
+                isLoading = false
             }
-            isLoading = false
         }
     }
 
@@ -400,7 +410,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
             playlists = playlists,
             allTracks = storedTracks,
             selectedPlaylistId = selectedPlaylistId,
-            selectedPlaylistTracks = selectedPlaylistTracks,
+            selectedPlaylistEntries = selectedPlaylistEntries,
             onSelectPlaylist = { selectedPlaylistId = it },
             onBack = { selectedPlaylistId = null },
             onCreatePlaylist = { name ->

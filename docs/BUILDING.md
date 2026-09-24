@@ -19,6 +19,23 @@ echo "sdk.dir=$HOME/android-sdk" > local.properties
 `local.properties` is machine-specific and is ignored by Git. The debug APK is
 written to `app/build/outputs/apk/debug/app-debug.apk`.
 
+## Release signing
+
+Release builds are unsigned unless all of these environment variables are
+provided:
+
+```text
+SUNPLAYER_KEYSTORE_PATH
+SUNPLAYER_KEYSTORE_PASSWORD
+SUNPLAYER_KEY_ALIAS
+SUNPLAYER_KEY_PASSWORD
+```
+
+Never commit the keystore or its credentials. GitHub Actions expects the
+keystore as the base64-encoded `SUNPLAYER_KEYSTORE_BASE64` secret and the
+remaining values as protected repository secrets. Tagged releases fail before
+packaging when those secrets are missing.
+
 ## CI
 
 GitHub Actions installs Temurin 17, runs the JVM unit tests, and builds both

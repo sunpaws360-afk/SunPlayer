@@ -47,9 +47,12 @@ class AudioLibraryRepository(
     }
 
     fun observePlaylistTracks(playlistId: Long): Flow<List<AudioTrack>> =
-        playlistDao.observePlaylistTracks(playlistId).map { tracks ->
-            tracks.map(TrackEntity::toAudioTrack)
+        playlistDao.observePlaylistEntries(playlistId).map { entries ->
+            entries.mapNotNull(PlaylistTrackRow::toAudioTrackOrNull)
         }
+
+    fun observePlaylistEntries(playlistId: Long): Flow<List<PlaylistTrackRow>> =
+        playlistDao.observePlaylistEntries(playlistId)
 
     fun observePlaylistTrackCount(playlistId: Long): Flow<Int> =
         playlistDao.observeTrackCount(playlistId)
