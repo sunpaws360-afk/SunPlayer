@@ -7,12 +7,12 @@ plugins {
 
 android {
     namespace = "com.rebecca.sunplayer"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.rebecca.sunplayer"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 4
         versionName = "1.3.0"
     }
