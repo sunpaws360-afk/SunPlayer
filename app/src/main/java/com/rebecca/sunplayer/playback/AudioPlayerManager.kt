@@ -2,6 +2,7 @@ package com.rebecca.sunplayer.playback
 
 import android.content.ComponentName
 import android.content.Context
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -35,6 +36,8 @@ class AudioPlayerManager(context: Context) {
 
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+    private val _queue = MutableStateFlow<List<AudioTrack>>(emptyList())
+    val queue: StateFlow<List<AudioTrack>> = _queue.asStateFlow()
 
     private val controllerFuture = MediaController.Builder(
         applicationContext,
@@ -70,6 +73,7 @@ class AudioPlayerManager(context: Context) {
         originalPlaylist.addAll(tracks)
         tracksById.clear()
         tracksById.putAll(tracks.associateBy { it.id })
+        publishQueue()
         pendingStartIndex = startIndex.coerceIn(0, (tracks.size - 1).coerceAtLeast(0))
         if (tracks.isNotEmpty()) {
             applyPlaylist(pendingStartIndex, startPlayback = true)
@@ -101,8 +105,64 @@ class AudioPlayerManager(context: Context) {
         } else {
             originalPlaylist.add(track)
             tracksById[track.id] = track
+            publishQueue()
             applyPlaylist(originalPlaylist.lastIndex, startPlayback = true)
         }
+    }
+
+    fun addToNext(track: AudioTrack) {
+        val mediaController = controller ?: return
+        if (mediaController.currentMediaItem?.mediaId == track.id.toString()) return
+        val existingIndex = originalPlaylist.indexOfFirst { it.id == track.id }
+        if (existingIndex >= 0) {
+            mediaController.removeMediaItem(existingIndex)
+            originalPlaylist.removeAt(existingIndex)
+        }
+        val nextIndex = (mediaController.currentMediaItemIndex + 1).coerceAtMost(originalPlaylist.size)
+        originalPlaylist.add(nextIndex, track)
+        tracksById[track.id] = track
+        mediaController.addMediaItem(nextIndex, mediaItem(track))
+        publishQueue()
+    }
+
+    fun addToEnd(track: AudioTrack) {
+        val mediaController = controller ?: return
+        if (mediaController.currentMediaItem?.mediaId == track.id.toString()) return
+        val existingIndex = originalPlaylist.indexOfFirst { it.id == track.id }
+        if (existingIndex >= 0) {
+            mediaController.removeMediaItem(existingIndex)
+            originalPlaylist.removeAt(existingIndex)
+        }
+        originalPlaylist.add(track)
+        tracksById[track.id] = track
+        mediaController.addMediaItem(mediaItem(track))
+        publishQueue()
+    }
+
+    fun removeFromQueue(index: Int) {
+        val mediaController = controller ?: return
+        if (index !in originalPlaylist.indices || index == mediaController.currentMediaItemIndex) return
+        mediaController.removeMediaItem(index)
+        originalPlaylist.removeAt(index)
+        publishQueue()
+    }
+
+    fun moveInQueue(fromIndex: Int, toIndex: Int) {
+        val mediaController = controller ?: return
+        if (fromIndex !in originalPlaylist.indices || toIndex !in originalPlaylist.indices) return
+        mediaController.moveMediaItem(fromIndex, toIndex)
+        val track = originalPlaylist.removeAt(fromIndex)
+        originalPlaylist.add(toIndex, track)
+        publishQueue()
+    }
+
+    fun clearQueue() {
+        val mediaController = controller ?: return
+        val currentIndex = mediaController.currentMediaItemIndex
+        if (currentIndex == C.INDEX_UNSET) return
+        mediaController.removeMediaItems(currentIndex + 1, mediaController.mediaItemCount)
+        originalPlaylist.subList((currentIndex + 1).coerceAtMost(originalPlaylist.size), originalPlaylist.size).clear()
+        publishQueue()
     }
 
     fun togglePlayPause() {
@@ -148,6 +208,22 @@ class AudioPlayerManager(context: Context) {
         mediaController.prepare()
         if (startPlayback) mediaController.play()
         updateState()
+    }
+
+    private fun mediaItem(track: AudioTrack): MediaItem = MediaItem.Builder()
+        .setMediaId(track.id.toString())
+        .setUri(track.uri)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(track.title)
+                .setArtist(track.artist)
+                .setAlbumTitle(track.album)
+                .build()
+        )
+        .build()
+
+    private fun publishQueue() {
+        _queue.value = originalPlaylist.toList()
     }
 
     private fun updateState() {

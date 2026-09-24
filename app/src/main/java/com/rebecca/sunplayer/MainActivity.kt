@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -89,6 +90,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
     val scanner = remember { AudioScanner(context) }
     val libraryRepository = remember { AudioLibraryRepository(context) }
     val storedTracks by libraryRepository.tracks.collectAsState(initial = emptyList())
+    val queue by playerManager.queue.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var sortOption by remember { mutableStateOf(SortOption.TITLE) }
@@ -98,6 +100,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
     var hasPermission by remember { mutableStateOf(false) }
 
     var isNowPlayingExpanded by remember { mutableStateOf(false) }
+    var isQueueExpanded by remember { mutableStateOf(false) }
 
     val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -321,7 +324,9 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                                 isSelected = isSelected,
                                 onClick = {
                                     playerManager.setPlaylist(filteredTracks, filteredTracks.indexOf(track))
-                                }
+                                },
+                                onAddNext = { playerManager.addToNext(track) },
+                                onAddToEnd = { playerManager.addToEnd(track) }
                             )
                         }
                     }
@@ -345,7 +350,20 @@ fun MainScreen(playerManager: AudioPlayerManager) {
             onSeek = { playerManager.seekTo(it) },
             onToggleShuffle = { playerManager.toggleShuffle() },
             onToggleRepeat = { playerManager.toggleRepeat() },
+            onOpenQueue = { isQueueExpanded = true },
             onDismiss = { isNowPlayingExpanded = false }
+        )
+    }
+
+    if (isQueueExpanded) {
+        QueueDialog(
+            queue = queue,
+            currentTrackId = playbackState.currentTrack?.id,
+            onMoveUp = { playerManager.moveInQueue(it, it - 1) },
+            onMoveDown = { playerManager.moveInQueue(it, it + 1) },
+            onRemove = { playerManager.removeFromQueue(it) },
+            onClear = { playerManager.clearQueue() },
+            onDismiss = { isQueueExpanded = false }
         )
     }
 }
@@ -354,8 +372,12 @@ fun MainScreen(playerManager: AudioPlayerManager) {
 fun TrackItem(
     track: AudioTrack,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onAddNext: () -> Unit,
+    onAddToEnd: () -> Unit
 ) {
+    var isQueueMenuExpanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -420,6 +442,31 @@ fun TrackItem(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            Box {
+                IconButton(onClick = { isQueueMenuExpanded = true }) {
+                    Icon(Icons.Default.QueueMusic, contentDescription = "Queue actions")
+                }
+                DropdownMenu(
+                    expanded = isQueueMenuExpanded,
+                    onDismissRequest = { isQueueMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Play next") },
+                        onClick = {
+                            onAddNext()
+                            isQueueMenuExpanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add to queue") },
+                        onClick = {
+                            onAddToEnd()
+                            isQueueMenuExpanded = false
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -526,6 +573,7 @@ fun NowPlayingExpandedDialog(
     onSeek: (Long) -> Unit,
     onToggleShuffle: () -> Unit,
     onToggleRepeat: () -> Unit,
+    onOpenQueue: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -647,6 +695,91 @@ fun NowPlayingExpandedDialog(
                     }
                     val tint = if (repeatMode != RepeatMode.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     Icon(imageVector = icon, contentDescription = "Repeat", tint = tint)
+                }
+            }
+
+            IconButton(onClick = onOpenQueue) {
+                Icon(Icons.Default.QueueMusic, contentDescription = "Open queue")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun QueueDialog(
+    queue: List<AudioTrack>,
+    currentTrackId: Long?,
+    onMoveUp: (Int) -> Unit,
+    onMoveDown: (Int) -> Unit,
+    onRemove: (Int) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Queue", style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = onClear, enabled = queue.size > 1) {
+                    Text("Clear upcoming")
+                }
+            }
+
+            if (queue.isEmpty()) {
+                Text(
+                    text = "The queue is empty",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 24.dp)
+                )
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    itemsIndexed(queue, key = { _, track -> track.id }) { index, track ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = track.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = if (track.id == currentTrackId) FontWeight.Bold else FontWeight.Normal
+                                )
+                                Text(
+                                    text = track.artist,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(onClick = { onMoveUp(index) }, enabled = index > 0) {
+                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
+                            }
+                            IconButton(onClick = { onMoveDown(index) }, enabled = index < queue.lastIndex) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
+                            }
+                            IconButton(
+                                onClick = { onRemove(index) },
+                                enabled = track.id != currentTrackId
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Remove from queue")
+                            }
+                        }
+                    }
                 }
             }
         }
