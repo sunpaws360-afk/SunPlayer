@@ -1,10 +1,13 @@
 package com.rebecca.sunplayer.data
 
 import android.net.Uri
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.rebecca.sunplayer.model.AudioTrack
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.runner.RunWith
 
+@RunWith(AndroidJUnit4::class)
 class TrackEntityTest {
     @Test
     fun fromAudioTrack_preservesLibraryFields() {
