@@ -13,8 +13,8 @@ android {
         applicationId = "com.rebecca.sunplayer"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
     }
 
     buildFeatures {
@@ -38,11 +38,25 @@ android {
         jvmTarget = "17"
     }
 
+    signingConfigs {
+        create("release") {
+            val keystorePath = providers.environmentVariable("SUNPLAYER_KEYSTORE_PATH").orNull
+            if (keystorePath != null) {
+                storeFile = file(keystorePath)
+                storePassword = providers.environmentVariable("SUNPLAYER_KEYSTORE_PASSWORD").orNull
+                keyAlias = providers.environmentVariable("SUNPLAYER_KEY_ALIAS").orNull
+                keyPassword = providers.environmentVariable("SUNPLAYER_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
+            if (providers.environmentVariable("SUNPLAYER_KEYSTORE_PATH").orNull != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {

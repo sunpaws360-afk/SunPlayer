@@ -17,9 +17,9 @@ SunPlayer is a fast, lightweight, offline-first, private, and modern Android loc
 5. **Lightweight Footprint**: Optimized R8 shrinking, low battery/CPU consumption during playback.
 
 ## 4. Key Functional Areas
-- **Storage & Scanner**: Incremental MediaStore and folder scanning (detecting added, modified, moved, deleted files).
+- **Storage & Scanner**: MediaStore scanning with a persistent Room index and explicit failure semantics; incremental and folder scanning remain future work.
 - **Audio Engine**: Android Media3 ExoPlayer with gapless playback, audio focus handling, and headset/Bluetooth response.
-- **Library Views**: Folders, Songs, Albums, Artists, Genres, Playlists, Favorites, and Search.
+- **Library Views**: Songs, Playlists, Favorites, and Search are established; folders, albums, artists, and genres remain future views.
 - **Queue Management**: Dynamic playback queue (play next, add to end, drag-and-drop reorder, save to playlist).
 - **Audio Pipeline & DSP (Future Milestone)**: Preamp, graphic/parametric equalizer, bass boost, balance, and volume leveling.
 - **Optional Extensions**: Offline lyrics (LRC/embedded), metadata editor, smart playlists.

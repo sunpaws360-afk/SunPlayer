@@ -12,7 +12,8 @@ data class TrackEntity(
     val artist: String,
     val album: String,
     val durationMs: Long,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    val isFavorite: Boolean = false
 ) {
     fun toAudioTrack(): AudioTrack = AudioTrack(
         id = id,
@@ -25,14 +26,15 @@ data class TrackEntity(
     )
 
     companion object {
-        fun fromAudioTrack(track: AudioTrack): TrackEntity = TrackEntity(
+        fun fromAudioTrack(track: AudioTrack, isFavorite: Boolean = false): TrackEntity = TrackEntity(
             id = track.id,
             uri = track.uri.toString(),
             title = track.title,
             artist = track.artist,
             album = track.album,
             durationMs = track.durationMs,
-            sizeBytes = track.sizeBytes
+            sizeBytes = track.sizeBytes,
+            isFavorite = isFavorite
         )
     }
 }

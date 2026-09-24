@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,10 +33,12 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.rebecca.sunplayer.data.AudioLibraryRepository
 import com.rebecca.sunplayer.data.AudioScanner
+import com.rebecca.sunplayer.data.ScanResult
 import com.rebecca.sunplayer.model.AudioTrack
 import com.rebecca.sunplayer.playback.AudioPlayerManager
 import com.rebecca.sunplayer.playback.RepeatMode
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 enum class SortOption {
@@ -89,6 +92,9 @@ fun MainScreen(playerManager: AudioPlayerManager) {
     val scanner = remember { AudioScanner(context) }
     val libraryRepository = remember { AudioLibraryRepository(context) }
     val storedTracks by libraryRepository.tracks.collectAsState(initial = emptyList())
+    val favoriteIds by libraryRepository.favoriteIds.collectAsState(initial = emptySet())
+    val playlists by libraryRepository.playlists.collectAsState(initial = emptyList())
+    val queue by playerManager.queue.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var sortOption by remember { mutableStateOf(SortOption.TITLE) }
@@ -96,8 +102,18 @@ fun MainScreen(playerManager: AudioPlayerManager) {
 
     var isLoading by remember { mutableStateOf(false) }
     var hasPermission by remember { mutableStateOf(false) }
+    var scanError by remember { mutableStateOf<String?>(null) }
 
     var isNowPlayingExpanded by remember { mutableStateOf(false) }
+    var isQueueExpanded by remember { mutableStateOf(false) }
+    var isPlaylistsExpanded by remember { mutableStateOf(false) }
+    var selectedPlaylistId by remember { mutableStateOf<Long?>(null) }
+    var playlistTrackToAdd by remember { mutableStateOf<AudioTrack?>(null) }
+    val selectedPlaylistFlow = remember(selectedPlaylistId) {
+        libraryRepository.observePlaylistEntries(selectedPlaylistId ?: -1L)
+    }
+    val selectedPlaylistEntries by selectedPlaylistFlow
+        .collectAsState(initial = emptyList())
 
     val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -105,16 +121,30 @@ fun MainScreen(playerManager: AudioPlayerManager) {
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
+    fun scanLibrary() {
+        isLoading = true
+        coroutineScope.launch {
+            try {
+                scanError = when (val result = libraryRepository.scanAndStore(scanner)) {
+                    is ScanResult.Success -> null
+                    is ScanResult.Failure -> result.error.message ?: "Unable to scan music library"
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                scanError = error.message ?: "Unable to refresh music library"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasPermission = isGranted
         if (isGranted) {
-            isLoading = true
-            coroutineScope.launch {
-                libraryRepository.scanAndStore(scanner)
-                isLoading = false
-            }
+            scanLibrary()
         }
     }
 
@@ -126,11 +156,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
 
         hasPermission = granted
         if (granted) {
-            isLoading = true
-            coroutineScope.launch {
-                libraryRepository.scanAndStore(scanner)
-                isLoading = false
-            }
+            scanLibrary()
         } else {
             permissionLauncher.launch(permissionToRequest)
         }
@@ -177,6 +203,9 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { isPlaylistsExpanded = true }) {
+                        Icon(Icons.Default.PlaylistPlay, contentDescription = "Playlists")
+                    }
                     IconButton(onClick = { isSortMenuExpanded = true }) {
                         Icon(Icons.Default.Sort, contentDescription = "Sort")
                     }
@@ -204,11 +233,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
 
                     IconButton(onClick = {
                         if (hasPermission) {
-                            isLoading = true
-                            coroutineScope.launch {
-                                libraryRepository.scanAndStore(scanner)
-                                isLoading = false
-                            }
+                            scanLibrary()
                         } else {
                             permissionLauncher.launch(permissionToRequest)
                         }
@@ -261,6 +286,15 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
             )
+
+            if (scanError != null) {
+                Text(
+                    text = "Library refresh failed. Existing songs were kept.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
 
             // Header summary row
             Row(
@@ -319,8 +353,17 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                             TrackItem(
                                 track = track,
                                 isSelected = isSelected,
+                                isFavorite = track.id in favoriteIds,
                                 onClick = {
                                     playerManager.setPlaylist(filteredTracks, filteredTracks.indexOf(track))
+                                },
+                                onAddNext = { playerManager.addToNext(track) },
+                                onAddToEnd = { playerManager.addToEnd(track) },
+                                onAddToPlaylist = { playlistTrackToAdd = track },
+                                onToggleFavorite = {
+                                    coroutineScope.launch {
+                                        libraryRepository.setFavorite(track.id, track.id !in favoriteIds)
+                                    }
                                 }
                             )
                         }
@@ -345,7 +388,80 @@ fun MainScreen(playerManager: AudioPlayerManager) {
             onSeek = { playerManager.seekTo(it) },
             onToggleShuffle = { playerManager.toggleShuffle() },
             onToggleRepeat = { playerManager.toggleRepeat() },
+            onOpenQueue = { isQueueExpanded = true },
             onDismiss = { isNowPlayingExpanded = false }
+        )
+    }
+
+    if (isQueueExpanded) {
+        QueueDialog(
+            queue = queue,
+            currentTrackId = playbackState.currentTrack?.id,
+            onMoveUp = { playerManager.moveInQueue(it, it - 1) },
+            onMoveDown = { playerManager.moveInQueue(it, it + 1) },
+            onRemove = { playerManager.removeFromQueue(it) },
+            onClear = { playerManager.clearQueue() },
+            onDismiss = { isQueueExpanded = false }
+        )
+    }
+
+    if (isPlaylistsExpanded) {
+        PlaylistDialog(
+            playlists = playlists,
+            allTracks = storedTracks,
+            selectedPlaylistId = selectedPlaylistId,
+            selectedPlaylistEntries = selectedPlaylistEntries,
+            onSelectPlaylist = { selectedPlaylistId = it },
+            onBack = { selectedPlaylistId = null },
+            onCreatePlaylist = { name ->
+                coroutineScope.launch { selectedPlaylistId = libraryRepository.createPlaylist(name) }
+            },
+            onRenamePlaylist = { id, name ->
+                coroutineScope.launch { libraryRepository.renamePlaylist(id, name) }
+            },
+            onDeletePlaylist = { id ->
+                coroutineScope.launch {
+                    libraryRepository.deletePlaylist(id)
+                    selectedPlaylistId = null
+                }
+            },
+            onAddTrack = { id, trackId ->
+                coroutineScope.launch { libraryRepository.addTrackToPlaylist(id, trackId) }
+            },
+            onRemoveTrack = { id, trackId ->
+                coroutineScope.launch { libraryRepository.removeTrackFromPlaylist(id, trackId) }
+            },
+            onMoveTrack = { id, trackId, position ->
+                coroutineScope.launch { libraryRepository.moveTrackInPlaylist(id, trackId, position) }
+            },
+            onPlay = { tracks, shuffle ->
+                val orderedTracks = if (shuffle) tracks.shuffled() else tracks
+                playerManager.setPlaylist(orderedTracks)
+                isPlaylistsExpanded = false
+            },
+            onDismiss = {
+                isPlaylistsExpanded = false
+                selectedPlaylistId = null
+            }
+        )
+    }
+
+    playlistTrackToAdd?.let { track ->
+        PlaylistPickerDialog(
+            playlists = playlists,
+            track = track,
+            onSelect = { playlistId ->
+                coroutineScope.launch { libraryRepository.addTrackToPlaylist(playlistId, track.id) }
+                playlistTrackToAdd = null
+            },
+            onCreateAndAdd = { name ->
+                coroutineScope.launch {
+                    val playlistId = libraryRepository.createPlaylist(name)
+                    libraryRepository.addTrackToPlaylist(playlistId, track.id)
+                }
+                playlistTrackToAdd = null
+            },
+            onDismiss = { playlistTrackToAdd = null }
         )
     }
 }
@@ -354,8 +470,15 @@ fun MainScreen(playerManager: AudioPlayerManager) {
 fun TrackItem(
     track: AudioTrack,
     isSelected: Boolean,
-    onClick: () -> Unit
+    isFavorite: Boolean,
+    onClick: () -> Unit,
+    onAddNext: () -> Unit,
+    onAddToEnd: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onToggleFavorite: () -> Unit
 ) {
+    var isQueueMenuExpanded by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -420,6 +543,46 @@ fun TrackItem(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Box {
+                IconButton(onClick = { isQueueMenuExpanded = true }) {
+                    Icon(Icons.Default.QueueMusic, contentDescription = "Queue actions")
+                }
+                DropdownMenu(
+                    expanded = isQueueMenuExpanded,
+                    onDismissRequest = { isQueueMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Play next") },
+                        onClick = {
+                            onAddNext()
+                            isQueueMenuExpanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add to queue") },
+                        onClick = {
+                            onAddToEnd()
+                            isQueueMenuExpanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add to playlist") },
+                        onClick = {
+                            onAddToPlaylist()
+                            isQueueMenuExpanded = false
+                        }
+                    )
+                }
+            }
         }
     }
 }
@@ -526,6 +689,7 @@ fun NowPlayingExpandedDialog(
     onSeek: (Long) -> Unit,
     onToggleShuffle: () -> Unit,
     onToggleRepeat: () -> Unit,
+    onOpenQueue: () -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -647,6 +811,91 @@ fun NowPlayingExpandedDialog(
                     }
                     val tint = if (repeatMode != RepeatMode.OFF) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     Icon(imageVector = icon, contentDescription = "Repeat", tint = tint)
+                }
+            }
+
+            IconButton(onClick = onOpenQueue) {
+                Icon(Icons.Default.QueueMusic, contentDescription = "Open queue")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun QueueDialog(
+    queue: List<AudioTrack>,
+    currentTrackId: Long?,
+    onMoveUp: (Int) -> Unit,
+    onMoveDown: (Int) -> Unit,
+    onRemove: (Int) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Queue", style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = onClear, enabled = queue.size > 1) {
+                    Text("Clear upcoming")
+                }
+            }
+
+            if (queue.isEmpty()) {
+                Text(
+                    text = "The queue is empty",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 24.dp)
+                )
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    itemsIndexed(queue, key = { _, track -> track.id }) { index, track ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = track.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontWeight = if (track.id == currentTrackId) FontWeight.Bold else FontWeight.Normal
+                                )
+                                Text(
+                                    text = track.artist,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            IconButton(onClick = { onMoveUp(index) }, enabled = index > 0) {
+                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move up")
+                            }
+                            IconButton(onClick = { onMoveDown(index) }, enabled = index < queue.lastIndex) {
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move down")
+                            }
+                            IconButton(
+                                onClick = { onRemove(index) },
+                                enabled = track.id != currentTrackId
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Remove from queue")
+                            }
+                        }
+                    }
                 }
             }
         }

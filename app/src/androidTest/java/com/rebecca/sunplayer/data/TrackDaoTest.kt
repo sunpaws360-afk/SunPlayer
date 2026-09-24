@@ -42,6 +42,18 @@ class TrackDaoTest {
         assertEquals(listOf(2L), storedTracks.map { it.id })
     }
 
+    @Test
+    fun favoriteSurvivesReplacingScanSnapshot() = runBlocking {
+        val track = track(id = 3L, title = "Favorite")
+
+        dao.replaceAll(listOf(TrackEntity.fromAudioTrack(track)))
+        dao.setFavorite(track.id, true)
+        dao.replaceAll(listOf(TrackEntity.fromAudioTrack(track.copy(title = "Updated Favorite"))))
+
+        assertEquals(listOf(3L), dao.getFavoriteIds())
+        assertEquals("Updated Favorite", dao.getTracks().single().title)
+    }
+
     private fun track(id: Long, title: String): AudioTrack = AudioTrack(
         id = id,
         uri = android.net.Uri.EMPTY,

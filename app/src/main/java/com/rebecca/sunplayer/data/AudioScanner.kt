@@ -2,14 +2,25 @@ package com.rebecca.sunplayer.data
 
 import android.content.ContentUris
 import android.content.Context
+import android.util.Log
 import android.provider.MediaStore
 import com.rebecca.sunplayer.model.AudioTrack
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-class AudioScanner(private val context: Context) {
+sealed interface ScanResult {
+    data class Success(val tracks: List<AudioTrack>) : ScanResult
+    data class Failure(val error: Throwable) : ScanResult
+}
 
-    suspend fun scanAudioTracks(): List<AudioTrack> = withContext(Dispatchers.IO) {
+fun interface AudioTrackScanner {
+    suspend fun scanAudioTracks(): ScanResult
+}
+
+class AudioScanner(private val context: Context) : AudioTrackScanner {
+
+    override suspend fun scanAudioTracks(): ScanResult = withContext(Dispatchers.IO) {
         val tracks = mutableListOf<AudioTrack>()
         val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
 
@@ -26,13 +37,17 @@ class AudioScanner(private val context: Context) {
         val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
 
         try {
-            context.contentResolver.query(
+            val cursor = context.contentResolver.query(
                 collection,
                 projection,
                 selection,
                 null,
                 sortOrder
-            )?.use { cursor ->
+            ) ?: return@withContext ScanResult.Failure(
+                IllegalStateException("MediaStore returned no cursor")
+            )
+
+            cursor.use {
                 val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
                 val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
                 val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
@@ -66,11 +81,13 @@ class AudioScanner(private val context: Context) {
                     )
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            // Graceful error handling: log and return what was scanned so far
-            e.printStackTrace()
+            Log.e("AudioScanner", "MediaStore scan failed", e)
+            return@withContext ScanResult.Failure(e)
         }
 
-        tracks
+        ScanResult.Success(tracks)
     }
 }
