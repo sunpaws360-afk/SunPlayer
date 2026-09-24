@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.rebecca.sunplayer.data.AudioLibraryRepository
 import com.rebecca.sunplayer.data.AudioScanner
 import com.rebecca.sunplayer.model.AudioTrack
 import com.rebecca.sunplayer.playback.AudioPlayerManager
@@ -86,8 +87,9 @@ fun MainScreen(playerManager: AudioPlayerManager) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val scanner = remember { AudioScanner(context) }
+    val libraryRepository = remember { AudioLibraryRepository(context) }
+    val storedTracks by libraryRepository.tracks.collectAsState(initial = emptyList())
 
-    var tracks by remember { mutableStateOf<List<AudioTrack>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var sortOption by remember { mutableStateOf(SortOption.TITLE) }
     var isSortMenuExpanded by remember { mutableStateOf(false) }
@@ -110,7 +112,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
         if (isGranted) {
             isLoading = true
             coroutineScope.launch {
-                tracks = scanner.scanAudioTracks()
+                libraryRepository.scanAndStore(scanner)
                 isLoading = false
             }
         }
@@ -125,11 +127,17 @@ fun MainScreen(playerManager: AudioPlayerManager) {
         hasPermission = granted
         if (granted) {
             isLoading = true
-            tracks = scanner.scanAudioTracks()
-            isLoading = false
+            coroutineScope.launch {
+                libraryRepository.scanAndStore(scanner)
+                isLoading = false
+            }
         } else {
             permissionLauncher.launch(permissionToRequest)
         }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { libraryRepository.close() }
     }
 
     val playbackState by playerManager.playbackState.collectAsState()
@@ -142,11 +150,11 @@ fun MainScreen(playerManager: AudioPlayerManager) {
         }
     }
 
-    val filteredTracks = remember(tracks, searchQuery, sortOption) {
+    val filteredTracks = remember(storedTracks, searchQuery, sortOption) {
         val filtered = if (searchQuery.isBlank()) {
-            tracks
+            storedTracks
         } else {
-            tracks.filter {
+            storedTracks.filter {
                 it.title.contains(searchQuery, ignoreCase = true) ||
                 it.artist.contains(searchQuery, ignoreCase = true) ||
                 it.album.contains(searchQuery, ignoreCase = true)
@@ -198,7 +206,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                         if (hasPermission) {
                             isLoading = true
                             coroutineScope.launch {
-                                tracks = scanner.scanAudioTracks()
+                                libraryRepository.scanAndStore(scanner)
                                 isLoading = false
                             }
                         } else {
