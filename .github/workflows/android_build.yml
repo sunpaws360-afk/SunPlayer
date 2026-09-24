@@ -1,0 +1,50 @@
+name: Android Build & Release
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Debug & Release APK
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug assembleRelease --stacktrace
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SunPlayer-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SunPlayer-release-apk
+          path: app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: ignore
+
+      - name: Upload Signed Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SunPlayer-release-signed-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: ignore
