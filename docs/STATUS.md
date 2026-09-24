@@ -1,8 +1,8 @@
 # SunPlayer — Project Status & Roadmap
 
-## Current Phase: Foundation hardening after Playlists
+## Current Phase: v1.3.0 foundation release
 - **Baseline**: Durable Room library, Media3 playback, queue, Favorites, and Playlists.
-- **Current focus**: Prevent failed scans from clearing the indexed library, then verify migrations and instrumentation on Java 17/device infrastructure.
+- **Current focus**: Release the durable foundation and verify migrations and instrumentation on Java 17/device infrastructure.
 
 ## Milestone Progress
 - [x] Phase 0: Project foundation & CI build pipeline

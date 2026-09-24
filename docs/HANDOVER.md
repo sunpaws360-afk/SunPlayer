@@ -49,6 +49,7 @@ Playlists and durable user collections.
 - Preserved coroutine cancellation during scanning instead of converting it to
   a partial successful result.
 - Added a repository regression test proving failed scans retain indexed tracks.
+- Prepared v1.3.0 version metadata, tagged-release CI artifacts, and release notes.
 - Preserved existing Favorites behavior and schema migration.
 - Added playlist Room instrumentation coverage for CRUD, ordering, duplicate
   membership, and missing-track handling.
@@ -65,6 +66,7 @@ Playlists and durable user collections.
 - Add library destinations/tabs for playlists and favorites.
 - Add persistent queue and playback history.
 - Replace debug release signing with protected release signing.
+- Push a `v1.3.0` tag after CI approval to publish the development release.
 - Improve incremental/resumable scanning, artwork, metadata editing,
   accessibility, localization, backup/restore, Android Auto, and widgets.
 
@@ -90,6 +92,7 @@ Playlists and durable user collections.
 - Playlist membership is intentionally not foreign-keyed to `tracks`, so a
   MediaStore rescan cannot destroy user playlist structure.
 - Release builds still use the existing debug signing configuration.
+- The v1.3.0 GitHub release is development-only until protected signing is configured.
 - No smart playlists, AI, downloads, recording, network providers, DSP, or
   advanced Android integrations are part of this phase.
 
