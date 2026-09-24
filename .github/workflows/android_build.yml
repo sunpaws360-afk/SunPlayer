@@ -1,5 +1,9 @@
 name: Android Build & Release
 
+concurrency:
+  group: sunplayer-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [ "**" ]
