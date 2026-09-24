@@ -44,6 +44,11 @@ Playlists and durable user collections.
 - Added reusable Add to playlist flow from library rows.
 - Added create-and-add flow from the track picker.
 - Kept missing track membership rows when scanner-owned track rows disappear.
+- Added explicit `ScanResult.Success`/`ScanResult.Failure` semantics so a failed
+  MediaStore query cannot clear the Room library.
+- Preserved coroutine cancellation during scanning instead of converting it to
+  a partial successful result.
+- Added a repository regression test proving failed scans retain indexed tracks.
 - Preserved existing Favorites behavior and schema migration.
 - Added playlist Room instrumentation coverage for CRUD, ordering, duplicate
   membership, and missing-track handling.
@@ -54,6 +59,7 @@ Playlists and durable user collections.
 - Run the full CI build on Java 17.
 - Run instrumentation tests on an Android emulator or physical device.
 - Add explicit migration upgrade tests from a persisted version 2 database.
+- Add scanner tests for empty-success versus failure and permission/query errors.
 - Show missing playlist entries in the detail UI as unavailable placeholders.
 - Add playlist-to-queue without immediately starting playback.
 - Add library destinations/tabs for playlists and favorites.

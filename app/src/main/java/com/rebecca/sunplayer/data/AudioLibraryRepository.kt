@@ -5,11 +5,14 @@ import com.rebecca.sunplayer.model.AudioTrack
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-class AudioLibraryRepository(context: Context) {
+class AudioLibraryRepository(
+    context: Context,
+    databaseName: String = "sunplayer.db"
+) {
     private val database = androidx.room.Room.databaseBuilder(
         context.applicationContext,
         SunPlayerDatabase::class.java,
-        "sunplayer.db"
+        databaseName
     ).addMigrations(
         SunPlayerDatabase.MIGRATION_1_2,
         SunPlayerDatabase.MIGRATION_2_3
@@ -27,13 +30,16 @@ class AudioLibraryRepository(context: Context) {
 
     private val playlistDao = database.playlistDao()
 
-    suspend fun scanAndStore(scanner: AudioScanner): List<AudioTrack> {
-        val scannedTracks = scanner.scanAudioTracks()
+    suspend fun scanAndStore(scanner: AudioTrackScanner): ScanResult {
+        val result = scanner.scanAudioTracks()
+        if (result !is ScanResult.Success) return result
+
+        val scannedTracks = result.tracks
         val favoriteIds = trackDao.getFavoriteIds()
         trackDao.replaceAll(scannedTracks.map { track ->
             TrackEntity.fromAudioTrack(track, isFavorite = track.id in favoriteIds)
         })
-        return scannedTracks
+        return result
     }
 
     suspend fun setFavorite(trackId: Long, isFavorite: Boolean) {

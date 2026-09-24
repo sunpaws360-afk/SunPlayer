@@ -27,7 +27,7 @@ Data Sources:
   - Decoupled from UI components.
   - Implements Android `Media3` for seamless background playback, media notification, lock-screen controls, and headset unhook/Bluetooth events.
 - **Data & Storage Layer (`com.rebecca.sunplayer.data`)**:
-  - `MediaStoreScanner`: Incremental scanner reading tracks directly from Android MediaStore.
+  - `AudioScanner`: MediaStore scanner returning explicit success/failure results; incremental scanning is a later phase.
   - Room Database (Phase 1): High-performance cached index for instant querying, filtering, and sorting.
 - **Domain Models (`com.rebecca.sunplayer.model`)**:
   - Plain Kotlin data classes representing Tracks, Albums, Artists, and Playlists.

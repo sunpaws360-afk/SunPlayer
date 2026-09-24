@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.rebecca.sunplayer.data.AudioLibraryRepository
 import com.rebecca.sunplayer.data.AudioScanner
+import com.rebecca.sunplayer.data.ScanResult
 import com.rebecca.sunplayer.model.AudioTrack
 import com.rebecca.sunplayer.playback.AudioPlayerManager
 import com.rebecca.sunplayer.playback.RepeatMode
@@ -100,6 +101,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
 
     var isLoading by remember { mutableStateOf(false) }
     var hasPermission by remember { mutableStateOf(false) }
+    var scanError by remember { mutableStateOf<String?>(null) }
 
     var isNowPlayingExpanded by remember { mutableStateOf(false) }
     var isQueueExpanded by remember { mutableStateOf(false) }
@@ -116,16 +118,23 @@ fun MainScreen(playerManager: AudioPlayerManager) {
         Manifest.permission.READ_EXTERNAL_STORAGE
     }
 
+    fun scanLibrary() {
+        isLoading = true
+        coroutineScope.launch {
+            scanError = when (val result = libraryRepository.scanAndStore(scanner)) {
+                is ScanResult.Success -> null
+                is ScanResult.Failure -> result.error.message ?: "Unable to scan music library"
+            }
+            isLoading = false
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasPermission = isGranted
         if (isGranted) {
-            isLoading = true
-            coroutineScope.launch {
-                libraryRepository.scanAndStore(scanner)
-                isLoading = false
-            }
+            scanLibrary()
         }
     }
 
@@ -137,11 +146,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
 
         hasPermission = granted
         if (granted) {
-            isLoading = true
-            coroutineScope.launch {
-                libraryRepository.scanAndStore(scanner)
-                isLoading = false
-            }
+            scanLibrary()
         } else {
             permissionLauncher.launch(permissionToRequest)
         }
@@ -218,11 +223,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
 
                     IconButton(onClick = {
                         if (hasPermission) {
-                            isLoading = true
-                            coroutineScope.launch {
-                                libraryRepository.scanAndStore(scanner)
-                                isLoading = false
-                            }
+                            scanLibrary()
                         } else {
                             permissionLauncher.launch(permissionToRequest)
                         }
@@ -275,6 +276,15 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
             )
+
+            if (scanError != null) {
+                Text(
+                    text = "Library refresh failed. Existing songs were kept.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
 
             // Header summary row
             Row(
