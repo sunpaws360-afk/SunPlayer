@@ -1,67 +1,172 @@
 # SunPlayer Handover
 
-## Final intent
+## FINAL INTENT
 
-SunPlayer is intended to become a lightweight, offline-first Android music
-player that owns a durable local library while remaining small, predictable,
-and respectful of device resources.
+SunPlayer is a lightweight, private, offline-first Android music player and
+personal music library. It should remain useful without an account,
+subscription, cloud service, AI, or Internet connection. The database is an
+index and stores user-owned application state; it is not a proprietary music
+vault.
 
-The product should prioritize reliable local playback and library workflows
-before optional features such as DSP, downloads, network providers, or AI.
+## CURRENT PRODUCT STATE
 
-## Current goals
+The app scans local MediaStore audio, persists a Room-backed library, plays
+through a Media3 `MediaSessionService`, supports search/sort, shuffle/repeat,
+queue operations, and persistent favorites. It now has normal user-created
+playlists with durable membership and ordering.
 
-1. Keep MediaStore scanning and Room indexing reliable for local audio.
-2. Keep playback alive outside the Activity through Media3.
-3. Make queue and favorite state useful across app restarts and rescans.
-4. Keep CI reproducible with Java 17 and focused tests.
-5. Add larger features incrementally without destabilizing playback.
+## CURRENT PHASE
 
-## Done
+Playlists and durable user collections.
 
-- Android Kotlin/Compose project scaffold and Gradle wrapper 8.9.
-- MediaStore audio scanning with permission handling.
-- Room-backed track index with atomic scan replacement.
-- Room migration from schema version 1 to version 2.
-- Favorite state stored in Room and preserved across rescans.
-- Search and sorting for title, artist, album, and duration.
-- Media3 ExoPlayer moved into `PlaybackService`.
-- MediaSession controller facade for background playback controls.
-- Shuffle, repeat, seek, previous, next, and play/pause controls.
-- Queue add-next, add-to-end, remove, reorder, and clear-upcoming actions.
-- Queue bottom sheet and favorite controls in the library UI.
-- Unit and Room instrumentation test coverage for core persistence behavior.
-- CI configured for Java 17, unit tests, debug builds, and release builds.
-- Codespaces build instructions in `docs/BUILDING.md`.
+## OBJECTIVES
 
-## Verification status
+1. Add normalized playlist storage without mixing user state into scanner metadata.
+2. Preserve favorites and playlists across rescans and database upgrades.
+3. Provide playlist CRUD, membership, ordering, and playback through existing APIs.
+4. Keep missing files from destroying playlist structure or crashing access.
+5. Add focused persistence tests and document exact verification limits.
 
-Static diagnostics and whitespace checks pass. Local Gradle compilation is
-blocked by the container's OpenJDK 25 runtime; Kotlin 1.9.22 rejects that Java
-version string before source compilation. CI is configured to use Temurin 17,
-which is the required verification environment.
+## COMPLETED
 
-## Remaining work
+- Added Room schema version 3.
+- Added `PlaylistEntity` for playlist metadata.
+- Added normalized `PlaylistTrackEntity` with stable explicit positions.
+- Added indexes for playlist ordering and track lookup.
+- Added non-destructive migrations from schema 1 to 2 and 2 to 3.
+- Added playlist create, rename, delete, and observable list operations.
+- Added add/remove track operations with duplicate membership rejection.
+- Added persistent playlist reordering.
+- Added playlist track counts.
+- Added playlist playback and shuffle playback through the existing player facade.
+- Added playlist list and detail UI.
+- Added create, rename, delete, add tracks, remove tracks, and reorder controls.
+- Added reusable Add to playlist flow from library rows.
+- Added create-and-add flow from the track picker.
+- Kept missing track membership rows when scanner-owned track rows disappear.
+- Preserved existing Favorites behavior and schema migration.
+- Added playlist Room instrumentation coverage for CRUD, ordering, duplicate
+  membership, and missing-track handling.
+- Updated this handover with verified and blocked status.
 
-### Immediate
+## LEFT
 
-- Run CI on this branch and confirm Kotlin compilation, tests, and APK output.
-- Install the debug APK on a device and verify background playback, lock-screen
-  controls, headset unplug behavior, queue operations, and favorites.
-- Replace debug release signing with a protected release keystore in CI.
+- Run the full CI build on Java 17.
+- Run instrumentation tests on an Android emulator or physical device.
+- Add explicit migration upgrade tests from a persisted version 2 database.
+- Show missing playlist entries in the detail UI as unavailable placeholders.
+- Add playlist-to-queue without immediately starting playback.
+- Add library destinations/tabs for playlists and favorites.
+- Add persistent queue and playback history.
+- Replace debug release signing with protected release signing.
+- Improve incremental/resumable scanning, artwork, metadata editing,
+  accessibility, localization, backup/restore, Android Auto, and widgets.
 
-### Next product slices
+## TESTED
 
-- Room playlists with create, rename, delete, add, and remove track actions.
-- Library tabs for albums, artists, folders, playlists, and favorites.
-- Persistent queue and playback history.
-- Incremental/resumable scanner with cancellation and modification tracking.
-- Artwork extraction and metadata editing.
-- Accessibility, localization, backup/restore, and large-library testing.
-- Android Auto and widget integration after service behavior is proven.
+- Static diagnostics: passed for changed Kotlin, Room, UI, and test files.
+- `git diff --check`: passed.
+- Source-level review: completed for schema, repository, UI, and playback paths.
 
-## Non-goals for the current milestone
+## BLOCKED
 
-Do not begin AI recommendations, downloads, recording, network providers, or
-advanced DSP until playback, library persistence, queue behavior, signing, and
-test coverage are stable on a real device.
+- `./gradlew :app:testDebugUnitTest` did not reach compilation. The container
+  runs OpenJDK `25.0.4.1`; Kotlin `1.9.22` fails while parsing that Java
+  version. CI is configured for Temurin Java 17 and is the required executable
+  verification environment.
+- Instrumentation tests were not run because no emulator/device is attached.
+
+## KNOWN LIMITATIONS
+
+- Playlist detail currently displays available tracks through an inner join;
+  membership for a deleted file remains stored but is not yet shown as an
+  unavailable placeholder.
+- Playlist membership is intentionally not foreign-keyed to `tracks`, so a
+  MediaStore rescan cannot destroy user playlist structure.
+- Release builds still use the existing debug signing configuration.
+- No smart playlists, AI, downloads, recording, network providers, DSP, or
+  advanced Android integrations are part of this phase.
+
+## NEXT PHASE
+
+Run CI and device validation first. Then add explicit unavailable-track UI,
+playlist-to-queue support, and library navigation tabs before starting playback
+history or ratings.
+
+## DO NOT REDO
+
+- Do not recreate the Android project or Gradle wrapper.
+- Do not replace the existing MediaSession playback architecture.
+- Do not remove Room schema migrations.
+- Do not move Favorites into scanner-owned metadata or reset favorites on scan.
+- Do not replace normalized playlist membership with a serialized list.
+- Do not begin AI, downloads, recording, network, or advanced DSP work yet.
+
+## IMPORTANT FILES
+
+- `app/src/main/java/com/rebecca/sunplayer/data/SunPlayerDatabase.kt`
+- `app/src/main/java/com/rebecca/sunplayer/data/PlaylistDao.kt`
+- `app/src/main/java/com/rebecca/sunplayer/data/AudioLibraryRepository.kt`
+- `app/src/main/java/com/rebecca/sunplayer/PlaylistUi.kt`
+- `app/src/main/java/com/rebecca/sunplayer/MainActivity.kt`
+- `app/src/androidTest/java/com/rebecca/sunplayer/data/PlaylistDaoTest.kt`
+- `.github/workflows/android_build.yml`
+
+## IMPORTANT ARCHITECTURAL DECISIONS
+
+- Scanner-owned track metadata and user-owned state remain separate concerns.
+- Playlist membership uses a normalized join table with explicit positions.
+- Playlist membership does not cascade from track deletion; missing files remain
+  representable and can be surfaced or cleaned by a later user action.
+- The existing playback facade is reused for playlist playback rather than
+  introducing a second queue or player implementation.
+
+PROJECT INTENT
+---------------
+
+FINAL PRODUCT GOAL:
+A lightweight, private, offline-first Android music player and personal library.
+
+CURRENT PRODUCT STATE:
+Local scanning, Room persistence, MediaSession playback, queue, favorites, and
+normal durable playlists are implemented.
+
+CURRENT PHASE:
+Playlists and durable user collections.
+
+OBJECTIVES:
+1. Normalize playlist state.
+2. Preserve user data across scans and upgrades.
+3. Integrate playlist management with existing playback.
+
+COMPLETED:
+- Playlist schema, migration, repository, UI, playback, and focused tests added.
+
+LEFT:
+- Java 17 CI verification, device testing, unavailable placeholders, tabs,
+  history, signing, and later product phases.
+
+TESTED:
+- Static diagnostics and whitespace checks passed.
+
+BLOCKED:
+- Local Gradle execution stops on OpenJDK 25 before Kotlin compilation.
+
+KNOWN LIMITATIONS:
+- Missing playlist tracks remain stored but are currently hidden from the detail
+  list because available tracks are resolved through an inner join.
+
+NEXT PHASE:
+Verify CI/device behavior, then improve unavailable-track UI and navigation tabs.
+
+DO NOT REDO:
+- Preserve Room, Favorites, MediaSession playback, queue, and normalized
+  playlist membership.
+
+IMPORTANT FILES:
+- `SunPlayerDatabase.kt`, `PlaylistDao.kt`, `AudioLibraryRepository.kt`,
+  `PlaylistUi.kt`, `MainActivity.kt`, and `PlaylistDaoTest.kt`.
+
+IMPORTANT ARCHITECTURAL DECISIONS:
+- Scanner-owned metadata stays separate from user-owned Favorites and playlist
+  membership; missing files do not cascade-delete playlist structure.

@@ -91,6 +91,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
     val libraryRepository = remember { AudioLibraryRepository(context) }
     val storedTracks by libraryRepository.tracks.collectAsState(initial = emptyList())
     val favoriteIds by libraryRepository.favoriteIds.collectAsState(initial = emptySet())
+    val playlists by libraryRepository.playlists.collectAsState(initial = emptyList())
     val queue by playerManager.queue.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
@@ -102,6 +103,12 @@ fun MainScreen(playerManager: AudioPlayerManager) {
 
     var isNowPlayingExpanded by remember { mutableStateOf(false) }
     var isQueueExpanded by remember { mutableStateOf(false) }
+    var isPlaylistsExpanded by remember { mutableStateOf(false) }
+    var selectedPlaylistId by remember { mutableStateOf<Long?>(null) }
+    var playlistTrackToAdd by remember { mutableStateOf<AudioTrack?>(null) }
+    val selectedPlaylistTracks by libraryRepository
+        .observePlaylistTracks(selectedPlaylistId ?: -1L)
+        .collectAsState(initial = emptyList())
 
     val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -181,6 +188,9 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                     }
                 },
                 actions = {
+                    IconButton(onClick = { isPlaylistsExpanded = true }) {
+                        Icon(Icons.Default.PlaylistPlay, contentDescription = "Playlists")
+                    }
                     IconButton(onClick = { isSortMenuExpanded = true }) {
                         Icon(Icons.Default.Sort, contentDescription = "Sort")
                     }
@@ -329,6 +339,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                                 },
                                 onAddNext = { playerManager.addToNext(track) },
                                 onAddToEnd = { playerManager.addToEnd(track) },
+                                onAddToPlaylist = { playlistTrackToAdd = track },
                                 onToggleFavorite = {
                                     coroutineScope.launch {
                                         libraryRepository.setFavorite(track.id, track.id !in favoriteIds)
@@ -373,6 +384,66 @@ fun MainScreen(playerManager: AudioPlayerManager) {
             onDismiss = { isQueueExpanded = false }
         )
     }
+
+    if (isPlaylistsExpanded) {
+        PlaylistDialog(
+            playlists = playlists,
+            allTracks = storedTracks,
+            selectedPlaylistId = selectedPlaylistId,
+            selectedPlaylistTracks = selectedPlaylistTracks,
+            onSelectPlaylist = { selectedPlaylistId = it },
+            onBack = { selectedPlaylistId = null },
+            onCreatePlaylist = { name ->
+                coroutineScope.launch { selectedPlaylistId = libraryRepository.createPlaylist(name) }
+            },
+            onRenamePlaylist = { id, name ->
+                coroutineScope.launch { libraryRepository.renamePlaylist(id, name) }
+            },
+            onDeletePlaylist = { id ->
+                coroutineScope.launch {
+                    libraryRepository.deletePlaylist(id)
+                    selectedPlaylistId = null
+                }
+            },
+            onAddTrack = { id, trackId ->
+                coroutineScope.launch { libraryRepository.addTrackToPlaylist(id, trackId) }
+            },
+            onRemoveTrack = { id, trackId ->
+                coroutineScope.launch { libraryRepository.removeTrackFromPlaylist(id, trackId) }
+            },
+            onMoveTrack = { id, trackId, position ->
+                coroutineScope.launch { libraryRepository.moveTrackInPlaylist(id, trackId, position) }
+            },
+            onPlay = { tracks, shuffle ->
+                val orderedTracks = if (shuffle) tracks.shuffled() else tracks
+                playerManager.setPlaylist(orderedTracks)
+                isPlaylistsExpanded = false
+            },
+            onDismiss = {
+                isPlaylistsExpanded = false
+                selectedPlaylistId = null
+            }
+        )
+    }
+
+    playlistTrackToAdd?.let { track ->
+        PlaylistPickerDialog(
+            playlists = playlists,
+            track = track,
+            onSelect = { playlistId ->
+                coroutineScope.launch { libraryRepository.addTrackToPlaylist(playlistId, track.id) }
+                playlistTrackToAdd = null
+            },
+            onCreateAndAdd = { name ->
+                coroutineScope.launch {
+                    val playlistId = libraryRepository.createPlaylist(name)
+                    libraryRepository.addTrackToPlaylist(playlistId, track.id)
+                }
+                playlistTrackToAdd = null
+            },
+            onDismiss = { playlistTrackToAdd = null }
+        )
+    }
 }
 
 @Composable
@@ -383,6 +454,7 @@ fun TrackItem(
     onClick: () -> Unit,
     onAddNext: () -> Unit,
     onAddToEnd: () -> Unit,
+    onAddToPlaylist: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
     var isQueueMenuExpanded by remember { mutableStateOf(false) }
@@ -479,6 +551,13 @@ fun TrackItem(
                         text = { Text("Add to queue") },
                         onClick = {
                             onAddToEnd()
+                            isQueueMenuExpanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add to playlist") },
+                        onClick = {
+                            onAddToPlaylist()
                             isQueueMenuExpanded = false
                         }
                     )
