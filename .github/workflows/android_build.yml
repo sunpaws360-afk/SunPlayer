@@ -170,5 +170,5 @@ jobs:
             release-artifacts/app-release.apk
             release-artifacts/app-release.aab
           name: SunPlayer ${{ github.ref_name }}
-          body_path: docs/releases/1.3.0.md
+          body_path: docs/releases/1.3.0.1.md
           fail_on_unmatched_files: true
