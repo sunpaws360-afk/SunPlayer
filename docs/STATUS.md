@@ -1,8 +1,8 @@
 # SunPlayer — Project Status & Roadmap
 
-## Current Phase: v1.3.0 stable release candidate
+## Current Phase: v1.3.0.1 release
 - **Baseline**: Durable Room library, Media3 playback, queue, Favorites, and Playlists.
-- **Current focus**: Android 16/API 36 compatibility, CI/instrumentation verification, release signing, and final GitHub release.
+- **Current focus**: Final 1.3.0.1 packaging and GitHub release.
 
 ## Milestone Progress
 - [x] Phase 0: Project foundation & CI build pipeline
