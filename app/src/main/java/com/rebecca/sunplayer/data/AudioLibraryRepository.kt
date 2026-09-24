@@ -10,7 +10,7 @@ class AudioLibraryRepository(context: Context) {
         context.applicationContext,
         SunPlayerDatabase::class.java,
         "sunplayer.db"
-    ).build()
+    ).addMigrations(SunPlayerDatabase.MIGRATION_1_2).build()
 
     private val trackDao = database.trackDao()
 
@@ -18,10 +18,19 @@ class AudioLibraryRepository(context: Context) {
         entities.map(TrackEntity::toAudioTrack)
     }
 
+    val favoriteIds: Flow<Set<Long>> = trackDao.observeFavoriteIds().map { it.toSet() }
+
     suspend fun scanAndStore(scanner: AudioScanner): List<AudioTrack> {
         val scannedTracks = scanner.scanAudioTracks()
-        trackDao.replaceAll(scannedTracks.map(TrackEntity::fromAudioTrack))
+        val favoriteIds = trackDao.getFavoriteIds()
+        trackDao.replaceAll(scannedTracks.map { track ->
+            TrackEntity.fromAudioTrack(track, isFavorite = track.id in favoriteIds)
+        })
         return scannedTracks
+    }
+
+    suspend fun setFavorite(trackId: Long, isFavorite: Boolean) {
+        trackDao.setFavorite(trackId, isFavorite)
     }
 
     fun close() {

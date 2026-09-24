@@ -14,6 +14,15 @@ interface TrackDao {
     @Query("SELECT * FROM tracks ORDER BY title COLLATE NOCASE ASC")
     suspend fun getTracks(): List<TrackEntity>
 
+    @Query("SELECT id FROM tracks WHERE isFavorite = 1")
+    fun observeFavoriteIds(): Flow<List<Long>>
+
+    @Query("SELECT id FROM tracks WHERE isFavorite = 1")
+    suspend fun getFavoriteIds(): List<Long>
+
+    @Query("UPDATE tracks SET isFavorite = :isFavorite WHERE id = :trackId")
+    suspend fun setFavorite(trackId: Long, isFavorite: Boolean)
+
     @Upsert
     suspend fun upsertAll(tracks: List<TrackEntity>)
 

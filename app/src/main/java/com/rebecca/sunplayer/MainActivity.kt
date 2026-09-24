@@ -90,6 +90,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
     val scanner = remember { AudioScanner(context) }
     val libraryRepository = remember { AudioLibraryRepository(context) }
     val storedTracks by libraryRepository.tracks.collectAsState(initial = emptyList())
+    val favoriteIds by libraryRepository.favoriteIds.collectAsState(initial = emptySet())
     val queue by playerManager.queue.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
@@ -322,11 +323,17 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                             TrackItem(
                                 track = track,
                                 isSelected = isSelected,
+                                isFavorite = track.id in favoriteIds,
                                 onClick = {
                                     playerManager.setPlaylist(filteredTracks, filteredTracks.indexOf(track))
                                 },
                                 onAddNext = { playerManager.addToNext(track) },
-                                onAddToEnd = { playerManager.addToEnd(track) }
+                                onAddToEnd = { playerManager.addToEnd(track) },
+                                onToggleFavorite = {
+                                    coroutineScope.launch {
+                                        libraryRepository.setFavorite(track.id, track.id !in favoriteIds)
+                                    }
+                                }
                             )
                         }
                     }
@@ -372,9 +379,11 @@ fun MainScreen(playerManager: AudioPlayerManager) {
 fun TrackItem(
     track: AudioTrack,
     isSelected: Boolean,
+    isFavorite: Boolean,
     onClick: () -> Unit,
     onAddNext: () -> Unit,
-    onAddToEnd: () -> Unit
+    onAddToEnd: () -> Unit,
+    onToggleFavorite: () -> Unit
 ) {
     var isQueueMenuExpanded by remember { mutableStateOf(false) }
 
@@ -442,6 +451,14 @@ fun TrackItem(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                    contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
 
             Box {
                 IconButton(onClick = { isQueueMenuExpanded = true }) {
