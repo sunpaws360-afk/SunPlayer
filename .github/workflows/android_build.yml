@@ -5,15 +5,20 @@ concurrency:
   cancel-in-progress: true
 
 on:
-  push:
-    branches: [ "**" ]
-    tags: [ "v*" ]
   pull_request:
     branches: [ main, master ]
+  push:
+    branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, for example v1.3.0.1
+        required: true
+        default: v1.3.0.1
 
 jobs:
-  build:
+  verify:
+    name: Verify
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -28,11 +33,44 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Verify Java toolchain
-        run: java -version
+      - name: Run unit tests and debug build
+        run: |
+          chmod +x ./gradlew
+          ./gradlew testDebugUnitTest assembleDebug --stacktrace
+
+  release-candidate:
+    name: Release candidate
+    needs: verify
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Validate requested tag matches the app version
+        run: |
+          version_name=$(grep -E 'versionName *= *"[^"]+"' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+          requested_tag="${{ github.event.inputs.tag }}"
+          expected_tag="v${version_name}"
+          if [ "$requested_tag" != "$expected_tag" ]; then
+            echo "::error::Requested tag $requested_tag does not match versionName $version_name. Expected $expected_tag."
+            exit 1
+          fi
 
       - name: Configure release signing
-        id: configure-signing
+        id: signing
         env:
           SUNPLAYER_KEYSTORE_BASE64: ${{ secrets.SUNPLAYER_KEYSTORE_BASE64 }}
           SUNPLAYER_KEYSTORE_PASSWORD: ${{ secrets.SUNPLAYER_KEYSTORE_PASSWORD }}
@@ -50,125 +88,74 @@ jobs:
             fi
           done
 
-          if [[ "$GITHUB_REF" == refs/tags/v* && "$missing" == "1" ]]; then
-            echo "::error::All four release-signing secrets are required for tagged releases."
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::All release-signing secrets must be defined in the GitHub release environment before a release candidate can be built."
             exit 1
           fi
 
-          if [ "$missing" == "0" ]; then
-            echo "$SUNPLAYER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sunplayer-release.keystore"
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "$SUNPLAYER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sunplayer-release.keystore"
+          echo "keystore_path=$RUNNER_TEMP/sunplayer-release.keystore" >> "$GITHUB_OUTPUT"
 
-      - name: Build Debug & Release artifacts
+      - name: Build signed release artifacts
         env:
-          SUNPLAYER_KEYSTORE_BASE64: ${{ secrets.SUNPLAYER_KEYSTORE_BASE64 }}
+          SUNPLAYER_KEYSTORE_PATH: ${{ steps.signing.outputs.keystore_path }}
           SUNPLAYER_KEYSTORE_PASSWORD: ${{ secrets.SUNPLAYER_KEYSTORE_PASSWORD }}
           SUNPLAYER_KEY_ALIAS: ${{ secrets.SUNPLAYER_KEY_ALIAS }}
           SUNPLAYER_KEY_PASSWORD: ${{ secrets.SUNPLAYER_KEY_PASSWORD }}
         run: |
-          if [ "${{ steps.configure-signing.outputs.configured }}" == "true" ]; then
-            export SUNPLAYER_KEYSTORE_PATH="$RUNNER_TEMP/sunplayer-release.keystore"
-          fi
-          chmod +x ./gradlew
-          ./gradlew testDebugUnitTest assembleDebug assembleRelease bundleRelease --stacktrace
+          ./gradlew testDebugUnitTest assembleRelease bundleRelease --stacktrace
 
-      - name: Inspect native libraries for 16 KB readiness
-        run: |
-          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
-            apk="app/build/outputs/apk/release/app-release.apk"
-          else
-            apk="app/build/outputs/apk/release/app-release-unsigned.apk"
-          fi
-          echo "Native libraries in $apk:"
-          unzip -l "$apk" | grep -E '\.so$' || true
-
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: SunPlayer-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
-      - name: Upload Development Release APK
-        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: SunPlayer-release-apk
-          path: app/build/outputs/apk/release/app-release-unsigned.apk
-          if-no-files-found: error
-
-      - name: Upload Signed Release APK
-        if: steps.configure-signing.outputs.configured == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: SunPlayer-release-signed-apk
-          path: app/build/outputs/apk/release/app-release.apk
-          if-no-files-found: error
-
-      - name: Prepare release bundle
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          mkdir -p release-artifacts
-          cp app/build/outputs/apk/release/app-release.apk release-artifacts/
-          cp app/build/outputs/bundle/release/app-release.aab release-artifacts/
-
-      - name: Upload Release Bundle
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
-        with:
-          name: SunPlayer-release-bundle
-          path: release-artifacts/*
-          if-no-files-found: error
-
-  instrumentation:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-
-      - name: Run Android 16 instrumentation tests
+      - name: Run instrumentation smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 36
+          api-level: 34
           arch: x86_64
           profile: pixel_2
           script: ./gradlew connectedDebugAndroidTest --stacktrace
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, instrumentation]
+      - name: Upload release candidate artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SunPlayer-release-candidate
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: release-candidate
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download release artifacts
+      - name: Download release candidate artifacts
         uses: actions/download-artifact@v4
         with:
-          name: SunPlayer-release-bundle
+          name: SunPlayer-release-candidate
           path: release-artifacts
+
+      - name: Create and push release tag
+        env:
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.inputs.tag }}
           files: |
             release-artifacts/app-release.apk
             release-artifacts/app-release.aab
-          name: SunPlayer ${{ github.ref_name }}
+          name: SunPlayer ${{ github.event.inputs.tag }}
           body_path: docs/releases/1.3.0.1.md
           fail_on_unmatched_files: true
