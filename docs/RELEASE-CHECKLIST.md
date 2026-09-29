@@ -15,6 +15,12 @@ Status as of 2026-09-29:
       | SUNPLAYER_KEY_ALIAS | sunplayer_release |
       | SUNPLAYER_KEY_PASSWORD | same password again |
       NOTE: names are SUNPLAYER_* (NOT RELEASE_* — the workflow reads SUNPLAYER_*).
+- [x] GitHub Pages deploy workflow live (.github/workflows/pages.yml, configure-pages enablement:true).
+      NOTE: first Pages run fails with "Create Pages site failed: Resource not accessible by integration" —
+      the GITHUB_TOKEN cannot create a Pages site. One-time browser fix (~30 s):
+      Repo Settings → Pages → Build and deployment → Source: **GitHub Actions**.
+      Then re-run the Pages workflow (Actions → Pages → Run workflow) or push any docs/** change.
+      Verify: https://sunpaws360-afk.github.io/SunPlayer/privacy.html returns 200 (Play Console privacy URL).
 - [ ] Environment protection rule: Required reviewers → add yourself (Settings → Environments → release).
 - [ ] Back up keystore + passwords to a password manager / offline encrypted drive NOW.
 - [ ] Cut first release once secrets exist:
