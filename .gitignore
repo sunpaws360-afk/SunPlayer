@@ -1,1 +1,32 @@
-(empty)
+# IDE / OS
+*.iml
+.idea/
+.DS_Store
+
+# Local SDK config & machine-specific files
+local.properties
+/local.properties
+
+# Gradle caches and build outputs (never commit)
+.gradle/
+build/
+/app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing material — NEVER commit keystores or passwords
+*.jks
+*.keystore
+*.p12
+*.pfx
+secrets.properties
+
+# Environment / service-account files
+.env
+.env*
+service-account*.json
+google-services.json
+
+# Secret-scan reports
+gitleaks-report.json
