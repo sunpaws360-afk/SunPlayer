@@ -1,13 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!-- Legacy storage read is only needed up to Android 12L; newer releases
+         use READ_MEDIA_AUDIO. Scoping with maxSdkVersion keeps the requested
+         permission surface minimal. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
+    <!-- No INTERNET, no RECORD_AUDIO, no MANAGE_EXTERNAL_STORAGE:
+         SunPlayer is offline-first by design. Do not add these casually. -->
+
     <application
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="SunPlayer"
         android:icon="@android:drawable/ic_media_play"
         android:supportsRtl="true"
@@ -20,6 +30,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- exported=true is required so Android Auto / Assistant / Bluetooth
+             controllers can bind via MediaBrowserService. Media3 enforces
+             session-level access control for controllers. -->
         <service
             android:name=".playback.PlaybackService"
             android:exported="true"

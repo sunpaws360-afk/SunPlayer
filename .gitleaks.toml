@@ -1,0 +1,33 @@
+# gitleaks configuration for SunPlayer
+# Catches GitHub tokens (classic + fine-grained), private keys, keystore
+# passwords, and Slack/AWS-style secrets in diffs, files, and git history.
+title = "SunPlayer gitleaks config"
+
+[extend]
+# Starts from gitleaks' built-in ruleset (detects ghp_, github_pat_, etc.)
+useDefault = true
+
+[[rules]]
+id = "generic-secret-assignment"
+description = "Hardcoded password/secret assignments"
+regex = '''(?i)(storePassword|keyPassword|trustPassword|api[_-]?key|secret)\s*[:=]\s*["'][^"'${{]{8,}["']'''
+tags = ["password", "secret"]
+
+[[rules]]
+id = "android-keystore-reference"
+description = "Committed keystore file reference with credentials"
+regex = '''(?i)(\.jks|\.keystore)["']?\s*,?.*(password|passwd)'''
+tags = ["keystore"]
+
+[allowlist]
+description = "Allow non-secret placeholders and docs"
+paths = [
+    '''gitleaks-report\.json''',
+]
+regexes = [
+    # Environment-variable indirection used by app/build.gradle.kts and CI
+    '''providers\.environmentVariable\("SUNPLAYER_[A-Z_]+"\)''',
+    '''\$\{\{\s*secrets\.SUNPLAYER_[A-Z_]+\s*\}\}''',
+    # Placeholder values in documentation
+    '''your-(password|alias|keystore)''',
+]
