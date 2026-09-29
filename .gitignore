@@ -30,3 +30,7 @@ google-services.json
 
 # Secret-scan reports
 gitleaks-report.json
+
+# Release signing material (generated locally; never commit)
+*.base64
+.sunplayer-keystore-password.txt
