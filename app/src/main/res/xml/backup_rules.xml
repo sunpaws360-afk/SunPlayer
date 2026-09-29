@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backup rules for Android 11 and below (android:fullBackupContent).
+     SunPlayer intentionally backs up only user-created state (Room database,
+     preferences) so playlists, favorites, and settings survive a reinstall or
+     device transfer via OS Auto Backup. Caches, temp files, and external files
+     are excluded. The app itself performs no network transfers; users can
+     disable Auto Backup globally in system settings. -->
+<full-backup-content>
+    <include domain="database" path="." />
+    <include domain="sharedpref" path="." />
+    <exclude domain="root" path="cache" />
+    <exclude domain="root" path="code_cache" />
+    <exclude domain="root" path="no_backup" />
+    <exclude domain="file" path="." />
+    <exclude domain="external_files" path="." />
+</full-backup-content>

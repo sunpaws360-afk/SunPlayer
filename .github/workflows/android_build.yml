@@ -1,5 +1,10 @@
 name: Android Build & Release
 
+# Defense-in-depth: every job defaults to read-only token access.
+# Only the publish job elevates to contents:write (needed to push a tag).
+permissions:
+  contents: read
+
 concurrency:
   group: sunplayer-${{ github.ref }}
   cancel-in-progress: true
@@ -17,6 +22,20 @@ on:
         default: v1.3.0.1
 
 jobs:
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (full history so scans cover past commits)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan working tree and history for leaked secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   verify:
     name: Verify
     runs-on: ubuntu-latest
@@ -40,7 +59,7 @@ jobs:
 
   release-candidate:
     name: Release candidate
-    needs: verify
+    needs: [verify, secret-scan]
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: release
@@ -105,6 +124,10 @@ jobs:
         run: |
           ./gradlew testDebugUnitTest assembleRelease bundleRelease --stacktrace
 
+      - name: Remove decoded keystore from the runner immediately after signing
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sunplayer-release.keystore"
+
       - name: Run instrumentation smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -124,7 +147,7 @@ jobs:
 
   publish:
     name: Publish release
-    needs: release-candidate
+    needs: [release-candidate, secret-scan]
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: release
