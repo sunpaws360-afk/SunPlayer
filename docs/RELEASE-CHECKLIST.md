@@ -2,7 +2,7 @@
 
 Status as of 2026-09-29:
 - [x] Release keystore generated (alias `sunplayer_release`, RSA-2048, valid until 2054-02-14)
-      Files live ONLY in the task sandbox: `sunplayer-release.keystore(.base64)` + `.sunplayer-keystore-password.txt` (gitignored). Cert SHA-256 fingerprint starts A9:E4:96:53.
+      Files live ONLY in the task sandbox: the sandbox keystore export files (gitignored; see docs/DISTRIBUTION.md for storage rules). Cert SHA-256 fingerprint starts A9:E4:96:53.
 - [x] GitHub environment `release` created
 - [x] Secret scanning + Push Protection enabled
 - [x] Branch protection on `main` (require PR, strict status checks, no force-push/delete)

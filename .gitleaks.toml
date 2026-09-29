@@ -18,6 +18,8 @@ id = "android-keystore-reference"
 description = "Committed keystore file reference with credentials"
 regex = '''(?i)(\.jks|\.keystore)["']?\s*,?.*(password|passwd)'''
 tags = ["keystore"]
+[rules.allowlist]
+paths = ['''docs/.*\.md$''', '''README\.md$''']
 
 [allowlist]
 description = "Allow non-secret placeholders and docs"
@@ -31,3 +33,4 @@ regexes = [
     # Placeholder values in documentation
     '''your-(password|alias|keystore)''',
 ]
+
