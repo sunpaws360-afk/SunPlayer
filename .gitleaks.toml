@@ -15,6 +15,15 @@ commits = [
 paths = [
     '''gitleaks-report\.json''',
 ]
+# Commits made before the repo-standard .gitleaks.toml existed are scanned with
+# gitleaks' default ruleset only, so a global (rule-independent) allowlist is
+# required to suppress historical documentation false positives.
+commits = [
+    # docs/STATUS.md line 5 prose ("...compatibility, CI/instrumentation verification...")
+    # matched the built-in generic-api-key rule via the substring "CI/in". Not a secret;
+    # the file was rewritten later and contains no credential today.
+    '''5ef4d0fdd558c6b120449ba078d3618b55188a31''',
+]
 regexes = [
     # Environment-variable indirection used by app/build.gradle.kts and CI
     '''providers\.environmentVariable\("SUNPLAYER_[A-Z_]+"\)''',
