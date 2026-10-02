@@ -8,14 +8,16 @@ audit notes in `docs/HANDOVER.md` and the CI pipeline in
 
 | Item | Status |
 |---|---|
-| Release signing config (`app/build.gradle.kts`) | ✅ Present — reads `SUNPLAYER_KEYSTORE_PATH`, `SUNPLAYER_KEYSTORE_PASSWORD`, `SUNPLAYER_KEY_ALIAS`, `SUNPLAYER_KEY_PASSWORD` from the environment. Falls back to an **unsigned** release build if unset, so no keystore is ever required for ordinary PR builds. |
-| AAB build | ✅ CI runs `bundleRelease`; artifact uploaded as `SunPlayer-release-candidate`. |
+| Release signing config (`app/build.gradle.kts`) | ✅ Present — reads `SUNPLAYER_KEYSTORE_PATH`, `SUNPLAYER_KEYSTORE_PASSWORD`, `SUNPLAYER_KEY_ALIAS`, and `SUNPLAYER_KEY_PASSWORD` from the environment. Local Gradle builds may be unsigned when these are unset; the tagged CI release workflow fails if any signing secret is missing or the decoded keystore is empty. |
+| Release environment secrets | ✅ The four `SUNPLAYER_*` signing secrets were visible in the GitHub `release` environment settings on 2026-10-02. This confirms they are configured, not that the keystore/password pair has successfully signed a published artifact. |
+| AAB build | ✅ CI runs `bundleRelease`; the `SunPlayer-release-candidate` artifact is uploaded after a successful tagged build. |
 | Minify + resource shrink | ✅ Already enabled on `release`. |
-| GitHub Release publish | ✅ `publish` job creates tag + release with APK and AAB assets. |
+| GitHub Release publish | ✅ The `publish` job creates a GitHub Release with APK, AAB, and checksums after the tagged build succeeds and any required environment approval is granted. |
 | Target SDK | ✅ `targetSdk = 36` (Android 16), satisfying the Aug 31 2026 Play requirement. |
-| SHA-256 checksums on releases | ❌ Not yet — see Open items. |
-| Privacy policy hosted | ❌ Required before any store listing. |
-| Actual release keystore | ❌ Must be generated **offline**; nothing committed or needed in-repo. |
+| SHA-256 checksums on releases | ✅ The workflow generates `SHA256SUMS.txt` for the APK and AAB and attaches it to the GitHub Release. |
+| Privacy policy | ✅ Source is in `docs/privacy.html`, and a GitHub Pages workflow exists. Confirm the published URL returns successfully before submitting to an app store. |
+| Release keystore | ✅ Keystore material is not tracked in Git; the Base64-encoded keystore is configured as an environment secret. The signature of a successfully published release still needs verification. |
+| Playlists | ✅ The app supports local playlist creation, rename/delete, adding/removing tracks, reordering, and play/shuffle. Playlist persistence uses the local Room database. |
 
 > Note: the example in older planning docs used `System.getenv("RELEASE_KEYSTORE")`
 > etc. The repo standardizes on the `SUNPLAYER_*` variable names above; use those
@@ -69,12 +71,10 @@ For Play uploads, extend `publish` later with `r0adkll/upload-google-play@v1`
 using a `PLAYSTORE_JSON` service-account secret; keep that JSON out of every
 agent's reach and out of the repo (already gitignored).
 
-## Open items / next PRs
+## Remaining release checks / future work
 
-- [ ] Generate the offline release keystore; upload base64 to `release` env secrets.
-- [x] ~~Add SHA-256SUMS generation to the pipeline~~ — done: `release-candidate`
-      generates it, `publish` attaches it to every GitHub Release.
-- [ ] Host a privacy policy (simple GitHub Pages works); link from README + store listings.
+- [ ] Run the updated secret scan and verification workflow on current `main`.
+- [ ] Confirm a tagged release produces an APK signed with the expected release certificate; verify the attached checksums.
+- [ ] Confirm the privacy policy URL is live and link it from applicable store listings.
 - [ ] Add an `LICENSE` file (FLOSS) if F-Droid is desired.
-- [ ] Protect `main`: require PR + status checks, forbid force-push.
 - [ ] User-facing permission rationale screen in-app ("why audio access, nothing leaves the device").
