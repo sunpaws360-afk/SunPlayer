@@ -20,7 +20,9 @@ regex = '''(?i)(\.jks|\.keystore)["']?\s*,?.*(password|passwd)'''
 tags = ["keystore"]
 [rules.allowlist]
 paths = ['''docs/.*\.md$''', '''README\.md$''']
-
+commits = [
+    '''5ef4d0fdd558c6b120449ba078d3618b55188a31''',
+]
 [allowlist]
 description = "Allow non-secret placeholders and docs"
 paths = [
