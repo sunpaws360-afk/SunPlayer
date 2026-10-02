@@ -59,10 +59,6 @@ class PlaybackService : MediaSessionService() {
             .setSessionActivity(sessionActivity)
             .build()
 
-        // Keep notification in sync with playback state
-        player.addListener(object : com.google.common.util.concurrent.ForwardingFuture<Void?>(null) {},)
-
-        // Use a simple Player.Listener to observe playing state and metadata
         player.addListener(object : androidx.media3.common.Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 tryUpdateNotification(isPlaying)
@@ -102,10 +98,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
-        try {
-            notificationManager.cancel(NOTIFICATION_ID)
-        } catch (_: Exception) {
-        }
+        notificationManager.cancel(NOTIFICATION_ID)
         mediaSession.release()
         player.release()
         super.onDestroy()
@@ -126,9 +119,7 @@ class PlaybackService : MediaSessionService() {
             startForeground(NOTIFICATION_ID, notification)
         } else {
             // When paused, keep a notification but don't keep service in foreground state
-            try {
-                stopForeground(false)
-            } catch (_: Exception) {}
+            stopForeground(false)
             notificationManager.notify(NOTIFICATION_ID, notification)
         }
     }

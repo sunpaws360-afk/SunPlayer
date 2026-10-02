@@ -39,6 +39,7 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
 
   verify:
     name: Verify
@@ -108,12 +109,16 @@ jobs:
              [ -z "${SUNPLAYER_KEYSTORE_PASSWORD:-}" ] || \
              [ -z "${SUNPLAYER_KEY_ALIAS:-}" ] || \
              [ -z "${SUNPLAYER_KEY_PASSWORD:-}" ]; then
-            echo "::notice::Release signing secrets are not configured; skipping signed release steps."
-            echo "keystore_path=" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error::All four release-signing secrets must be configured in the release environment."
+            exit 1
           fi
 
-          echo "$SUNPLAYER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sunplayer-release.keystore"
+          umask 077
+          printf '%s' "$SUNPLAYER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sunplayer-release.keystore"
+          if [ ! -s "$RUNNER_TEMP/sunplayer-release.keystore" ]; then
+            echo "::error::SUNPLAYER_KEYSTORE_BASE64 decoded to an empty keystore."
+            exit 1
+          fi
           echo "keystore_path=$RUNNER_TEMP/sunplayer-release.keystore" >> "$GITHUB_OUTPUT"
 
       - name: Build signed release artifacts
