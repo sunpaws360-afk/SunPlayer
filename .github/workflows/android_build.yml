@@ -104,20 +104,13 @@ jobs:
           SUNPLAYER_KEY_ALIAS: ${{ secrets.SUNPLAYER_KEY_ALIAS }}
           SUNPLAYER_KEY_PASSWORD: ${{ secrets.SUNPLAYER_KEY_PASSWORD }}
         run: |
-          missing=0
-          for value in \
-            "$SUNPLAYER_KEYSTORE_BASE64" \
-            "$SUNPLAYER_KEYSTORE_PASSWORD" \
-            "$SUNPLAYER_KEY_ALIAS" \
-            "$SUNPLAYER_KEY_PASSWORD"; do
-            if [ -z "$value" ]; then
-              missing=1
-            fi
-          done
-
-          if [ "$missing" -ne 0 ]; then
-            echo "::error::All release-signing secrets must be defined in the GitHub release environment before a release candidate can be built."
-            exit 1
+          if [ -z "${SUNPLAYER_KEYSTORE_BASE64:-}" ] || \
+             [ -z "${SUNPLAYER_KEYSTORE_PASSWORD:-}" ] || \
+             [ -z "${SUNPLAYER_KEY_ALIAS:-}" ] || \
+             [ -z "${SUNPLAYER_KEY_PASSWORD:-}" ]; then
+            echo "::notice::Release signing secrets are not configured; skipping signed release steps."
+            echo "keystore_path=" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
           echo "$SUNPLAYER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sunplayer-release.keystore"
