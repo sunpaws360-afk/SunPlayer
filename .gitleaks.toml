@@ -1,3 +1,18 @@
+# gitleaks configuration for SunPlayer
+# Catches GitHub tokens (classic + fine-grained), private keys, keystore
+# passwords, and Slack/AWS-style secrets in diffs, files, and git history.
+title = "SunPlayer gitleaks config"
+
+[extend]
+# Starts from gitleaks' built-in ruleset (detects ghp_, github_pat_, etc.)
+useDefault = true
+
+[[rules]]
+id = "generic-secret-assignment"
+description = "Hardcoded password/secret assignments"
+regex = '''(?i)(storePassword|keyPassword|trustPassword|api[_-]?key|secret)\s*[:=]\s*["'][^"'${{]{8,}["']'''
+tags = ["password", "secret"]
+
 [[rules]]
 id = "android-keystore-reference"
 description = "Committed keystore file reference with credentials"
@@ -6,14 +21,19 @@ tags = ["keystore"]
 [rules.allowlist]
 paths = ['''docs/.*\.md$''', '''README\.md$''']
 
-# THE FIX: Move commits here, under the GLOBAL allowlist
 [allowlist]
 description = "Allow non-secret placeholders and docs"
-commits = [
-    '''5ef4d0fdd558c6b120449ba078d3618b55188a31''',
-]
 paths = [
     '''gitleaks-report\.json''',
+]
+# Commits made before the repo-standard .gitleaks.toml existed are scanned with
+# gitleaks' default ruleset only, so a global (rule-independent) allowlist is
+# required to suppress historical documentation false positives.
+commits = [
+    # docs/STATUS.md line 5 prose ("...compatibility, CI/instrumentation verification...")
+    # matched the built-in generic-api-key rule via the substring "CI/in". Not a secret;
+    # the file was rewritten later and contains no credential today.
+    '''5ef4d0fdd558c6b120449ba078d3618b55188a31''',
 ]
 regexes = [
     # Environment-variable indirection used by app/build.gradle.kts and CI
