@@ -35,6 +35,9 @@ gitleaks-report.json
 *.base64
 .sunplayer-keystore-password.txt
 
+# Local secret staging copies (never commit)
+keystore-*.txt
+
 # Git credential store (token must never be committed or pushed)
 .git-credentials
 .git-remote-url.txt
