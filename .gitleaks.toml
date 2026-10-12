@@ -7,6 +7,12 @@ title = "SunPlayer gitleaks config"
 # Starts from gitleaks' built-in ruleset (detects ghp_, github_pat_, etc.)
 useDefault = true
 
+# Scan the whole line, not just the matched secret-like substring. This lets
+# documentation prose that merely *mentions* keystore/password words (e.g. the
+# handover/audit docs) fall into the allowlist regexes below instead of being
+# flagged by the android-keystore-reference rule.
+regexTarget = "line"
+
 [[rules]]
 id = "generic-secret-assignment"
 description = "Hardcoded password/secret assignments"
@@ -25,6 +31,10 @@ paths = ['''docs/.*\.md$''', '''README\.md$''']
 description = "Allow non-secret placeholders and docs"
 paths = [
     '''gitleaks-report\.json''',
+    # Root-level project documentation that legitimately *mentions* keystore
+    # and password words while describing the release process (no values).
+    '''^(HANDOVER|AUDIT|RELEASE-CHECKLIST|DISTRIBUTION)\.md$''',
+    '''^docs/(RELEASE-CHECKLIST|DISTRIBUTION|BUILDING|MASTER_PROMPT)\.md$''',
 ]
 # Commits made before the repo-standard .gitleaks.toml existed are scanned with
 # gitleaks' default ruleset only, so a global (rule-independent) allowlist is
@@ -36,6 +46,9 @@ commits = [
     '''5ef4d0fdd558c6b120449ba078d3618b55188a31''',
 ]
 regexes = [
+    # Documentation prose about the signing pipeline: filename + password word
+    # co-occurring on one line with NO quoted assignment is not a credential.
+    '''(?i)(keystore|\.jks).*password(?!\s*[:=]\s*["'][^"']{8,}["'])[^"']*\n?''',
     # Environment-variable indirection used by app/build.gradle.kts and CI
     '''providers\.environmentVariable\("SUNPLAYER_[A-Z_]+"\)''',
     '''\$\{\{\s*secrets\.SUNPLAYER_[A-Z_]+\s*\}\}''',
