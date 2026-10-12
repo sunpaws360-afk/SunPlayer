@@ -174,7 +174,7 @@ class PlaybackService : MediaSessionService() {
             .addAction(playPauseAction)
             .addAction(nextAction)
             .addAction(stopAction)
-            .setStyle(NotificationCompat.MediaStyle()
+            .setStyle(androidx.media.app.NotificationCompat.MediaStyle()
                 .setShowActionsInCompactView(1) // show play/pause in compact view
             )
 
