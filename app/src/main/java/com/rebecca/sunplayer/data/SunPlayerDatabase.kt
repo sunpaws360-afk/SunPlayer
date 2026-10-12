@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [TrackEntity::class, PlaylistEntity::class, PlaylistTrackEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class SunPlayerDatabase : RoomDatabase() {
@@ -46,6 +46,14 @@ abstract class SunPlayerDatabase : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS index_playlist_tracks_trackId " +
                         "ON playlist_tracks(trackId)"
                 )
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE tracks ADD COLUMN playCount INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE tracks ADD COLUMN lastPlayed INTEGER DEFAULT NULL")
+                database.execSQL("ALTER TABLE tracks ADD COLUMN rating REAL NOT NULL DEFAULT 0.0")
             }
         }
     }

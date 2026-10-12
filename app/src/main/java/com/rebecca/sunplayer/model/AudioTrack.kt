@@ -9,7 +9,10 @@ data class AudioTrack(
     val artist: String,
     val album: String,
     val durationMs: Long,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    val playCount: Int = 0,
+    val lastPlayed: Long? = null,
+    val rating: Float = 0f
 ) {
     val formattedDuration: String
         get() {

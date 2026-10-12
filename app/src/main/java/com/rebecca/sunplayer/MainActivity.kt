@@ -38,6 +38,12 @@ import com.rebecca.sunplayer.data.ScanResult
 import com.rebecca.sunplayer.model.AudioTrack
 import com.rebecca.sunplayer.playback.AudioPlayerManager
 import com.rebecca.sunplayer.playback.RepeatMode
+import com.rebecca.sunplayer.ui.AlbumGroup
+import com.rebecca.sunplayer.ui.AlbumsListView
+import com.rebecca.sunplayer.ui.ArtistGroup
+import com.rebecca.sunplayer.ui.ArtistsListView
+import com.rebecca.sunplayer.ui.LibraryTab
+import com.rebecca.sunplayer.ui.LibraryTabBar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -178,11 +184,51 @@ fun MainScreen(playerManager: AudioPlayerManager) {
         }
     }
 
-    val filteredTracks = remember(storedTracks, searchQuery, sortOption) {
+    var selectedTab by remember { mutableStateOf(LibraryTab.TRACKS) }
+    var activeAlbumFilter by remember { mutableStateOf<String?>(null) }
+    var activeArtistFilter by remember { mutableStateOf<String?>(null) }
+
+    val baseTracks = remember(storedTracks, selectedTab, favoriteIds, activeAlbumFilter, activeArtistFilter) {
+        when {
+            activeAlbumFilter != null -> storedTracks.filter { it.album.equals(activeAlbumFilter, ignoreCase = true) }
+            activeArtistFilter != null -> storedTracks.filter { it.artist.equals(activeArtistFilter, ignoreCase = true) }
+            selectedTab == LibraryTab.FAVORITES -> storedTracks.filter { it.id in favoriteIds }
+            else -> storedTracks
+        }
+    }
+
+    val albumGroups = remember(storedTracks, searchQuery) {
+        val tracksToGroup = if (searchQuery.isBlank()) storedTracks else storedTracks.filter {
+            it.album.contains(searchQuery, ignoreCase = true) || it.artist.contains(searchQuery, ignoreCase = true)
+        }
+        tracksToGroup.groupBy { it.album }
+            .map { (album, tracks) ->
+                AlbumGroup(
+                    name = album,
+                    artist = tracks.firstOrNull()?.artist ?: "Unknown Artist",
+                    tracks = tracks
+                )
+            }.sortedBy { it.name.lowercase() }
+    }
+
+    val artistGroups = remember(storedTracks, searchQuery) {
+        val tracksToGroup = if (searchQuery.isBlank()) storedTracks else storedTracks.filter {
+            it.artist.contains(searchQuery, ignoreCase = true)
+        }
+        tracksToGroup.groupBy { it.artist }
+            .map { (artist, tracks) ->
+                ArtistGroup(
+                    name = artist,
+                    tracks = tracks
+                )
+            }.sortedBy { it.name.lowercase() }
+    }
+
+    val filteredTracks = remember(baseTracks, searchQuery, sortOption) {
         val filtered = if (searchQuery.isBlank()) {
-            storedTracks
+            baseTracks
         } else {
-            storedTracks.filter {
+            baseTracks.filter {
                 it.title.contains(searchQuery, ignoreCase = true) ||
                 it.artist.contains(searchQuery, ignoreCase = true) ||
                 it.album.contains(searchQuery, ignoreCase = true)
@@ -321,6 +367,54 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                 )
             }
 
+            LibraryTabBar(
+                selectedTab = selectedTab,
+                onTabSelected = {
+                    selectedTab = it
+                    activeAlbumFilter = null
+                    activeArtistFilter = null
+                },
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+
+            if (activeAlbumFilter != null || activeArtistFilter != null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = if (activeAlbumFilter != null) "Album: $activeAlbumFilter" else "Artist: $activeArtistFilter",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = {
+                                activeAlbumFilter = null
+                                activeArtistFilter = null
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Clear filter",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             // Header summary row
             Row(
                 modifier = Modifier
@@ -330,7 +424,12 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "${filteredTracks.size} songs",
+                    text = when (selectedTab) {
+                        LibraryTab.ALBUMS -> if (activeAlbumFilter == null) "${albumGroups.size} albums" else "${filteredTracks.size} songs"
+                        LibraryTab.ARTISTS -> if (activeArtistFilter == null) "${artistGroups.size} artists" else "${filteredTracks.size} songs"
+                        LibraryTab.FAVORITES -> "${filteredTracks.size} favorites"
+                        LibraryTab.TRACKS -> "${filteredTracks.size} songs"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -360,10 +459,25 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                         }
                     }
                 }
+                selectedTab == LibraryTab.ALBUMS && activeAlbumFilter == null -> {
+                    AlbumsListView(
+                        albums = albumGroups,
+                        onAlbumClick = { activeAlbumFilter = it.name }
+                    )
+                }
+                selectedTab == LibraryTab.ARTISTS && activeArtistFilter == null -> {
+                    ArtistsListView(
+                        artists = artistGroups,
+                        onArtistClick = { activeArtistFilter = it.name }
+                    )
+                }
                 filteredTracks.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            text = if (searchQuery.isNotEmpty()) "No matching songs found" else "No audio files found on your device",
+                            text = if (searchQuery.isNotEmpty()) "No matching songs found" else when (selectedTab) {
+                                LibraryTab.FAVORITES -> "No favorite songs yet. Tap the heart to star a song!"
+                                else -> "No audio files found on your device"
+                            },
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -381,6 +495,9 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                                 isFavorite = track.id in favoriteIds,
                                 onClick = {
                                     playerManager.setPlaylist(filteredTracks, filteredTracks.indexOf(track))
+                                    coroutineScope.launch {
+                                        libraryRepository.recordPlayback(track.id)
+                                    }
                                 },
                                 onAddNext = { playerManager.addToNext(track) },
                                 onAddToEnd = { playerManager.addToEnd(track) },
