@@ -125,8 +125,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun buildNotification(isPlaying: Boolean): Notification {
-        val controller = mediaSession.controller
-        val metadata = controller.currentMediaItem?.mediaMetadata
+        val metadata = player.currentMediaItem?.mediaMetadata
         val title = metadata?.title?.toString() ?: "SunPlayer"
         val artist = metadata?.artist?.toString() ?: ""
 
