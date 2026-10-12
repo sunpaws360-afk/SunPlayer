@@ -205,9 +205,6 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { isPlaylistsExpanded = true }) {
-                        Icon(Icons.Default.PlaylistPlay, contentDescription = "Playlists")
-                    }
                     IconButton(onClick = { isSortMenuExpanded = true }) {
                         Icon(Icons.Default.Sort, contentDescription = "Sort")
                     }
@@ -288,6 +285,32 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp)
             )
+
+            FilledTonalButton(
+                onClick = { isPlaylistsExpanded = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.PlaylistPlay, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Text(if (playlists.isEmpty()) "Create your first playlist" else "Your playlists")
+                    Text(
+                        text = if (playlists.isEmpty()) {
+                            "Organize your music into collections"
+                        } else {
+                            "${playlists.size} playlists · Tap to manage"
+                        },
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+                Icon(Icons.Default.ArrowForward, contentDescription = "Open playlists")
+            }
 
             if (scanError != null) {
                 Text(

@@ -33,8 +33,9 @@ SUNPLAYER_KEY_PASSWORD
 
 Never commit the keystore or its credentials. GitHub Actions expects the
 keystore as the base64-encoded `SUNPLAYER_KEYSTORE_BASE64` secret and the
-remaining values as protected repository secrets. Tagged releases fail before
-packaging when those secrets are missing.
+remaining values as secrets in the GitHub `release` environment. Tagged releases
+fail before packaging when any of those environment secrets are missing or the
+keystore decodes to an empty file.
 
 ## CI
 
