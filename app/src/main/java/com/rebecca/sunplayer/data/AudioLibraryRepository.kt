@@ -15,7 +15,8 @@ class AudioLibraryRepository(
         databaseName
     ).addMigrations(
         SunPlayerDatabase.MIGRATION_1_2,
-        SunPlayerDatabase.MIGRATION_2_3
+        SunPlayerDatabase.MIGRATION_2_3,
+        SunPlayerDatabase.MIGRATION_3_4
     ).build()
 
     private val trackDao = database.trackDao()
@@ -35,15 +36,30 @@ class AudioLibraryRepository(
         if (result !is ScanResult.Success) return result
 
         val scannedTracks = result.tracks
-        val favoriteIds = trackDao.getFavoriteIds()
+        val existingTracks = trackDao.getTracks().associateBy { it.id }
         trackDao.replaceAll(scannedTracks.map { track ->
-            TrackEntity.fromAudioTrack(track, isFavorite = track.id in favoriteIds)
+            val existing = existingTracks[track.id]
+            TrackEntity.fromAudioTrack(
+                track = track,
+                isFavorite = existing?.isFavorite ?: false,
+                playCount = existing?.playCount ?: 0,
+                lastPlayed = existing?.lastPlayed,
+                rating = existing?.rating ?: 0f
+            )
         })
         return result
     }
 
     suspend fun setFavorite(trackId: Long, isFavorite: Boolean) {
         trackDao.setFavorite(trackId, isFavorite)
+    }
+
+    suspend fun recordPlayback(trackId: Long) {
+        trackDao.recordPlayback(trackId)
+    }
+
+    suspend fun setRating(trackId: Long, rating: Float) {
+        trackDao.setRating(trackId, rating)
     }
 
     fun observePlaylistTracks(playlistId: Long): Flow<List<AudioTrack>> =

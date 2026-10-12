@@ -72,6 +72,28 @@ class DatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun migration3To4_addsPlayCountLastPlayedAndRatingColumns() {
+        val database = helper.writableDatabase
+        SunPlayerDatabase.MIGRATION_2_3.migrate(database)
+        SunPlayerDatabase.MIGRATION_3_4.migrate(database)
+
+        database.query("SELECT playCount, lastPlayed, rating FROM tracks WHERE id = 7").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(0, cursor.getInt(0))
+            assertTrue(cursor.isNull(1))
+            assertEquals(0.0f, cursor.getFloat(2), 0.001f)
+        }
+
+        database.execSQL("UPDATE tracks SET playCount = 3, lastPlayed = 123456789, rating = 4.5 WHERE id = 7")
+        database.query("SELECT playCount, lastPlayed, rating FROM tracks WHERE id = 7").use { cursor ->
+            assertTrue(cursor.moveToFirst())
+            assertEquals(3, cursor.getInt(0))
+            assertEquals(123456789L, cursor.getLong(1))
+            assertEquals(4.5f, cursor.getFloat(2), 0.001f)
+        }
+    }
+
     private fun tableExists(database: SupportSQLiteDatabase, tableName: String): Boolean {
         database.query(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",

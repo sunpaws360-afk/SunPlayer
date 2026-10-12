@@ -23,6 +23,12 @@ interface TrackDao {
     @Query("UPDATE tracks SET isFavorite = :isFavorite WHERE id = :trackId")
     suspend fun setFavorite(trackId: Long, isFavorite: Boolean)
 
+    @Query("UPDATE tracks SET playCount = playCount + 1, lastPlayed = :timestamp WHERE id = :trackId")
+    suspend fun recordPlayback(trackId: Long, timestamp: Long = System.currentTimeMillis())
+
+    @Query("UPDATE tracks SET rating = :rating WHERE id = :trackId")
+    suspend fun setRating(trackId: Long, rating: Float)
+
     @Upsert
     suspend fun upsertAll(tracks: List<TrackEntity>)
 
