@@ -175,7 +175,7 @@ class PlaybackService : MediaSessionService() {
             .addAction(nextAction)
             .addAction(stopAction)
             .setStyle(androidx.media.app.NotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(1) // show play/pause in compact
+                .setShowActionsInCompactView(1) // show play/pause in compact view
             )
 
         largeIcon?.let { builder.setLargeIcon(it) }
