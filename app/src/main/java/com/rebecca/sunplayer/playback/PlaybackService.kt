@@ -125,8 +125,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun buildNotification(isPlaying: Boolean): Notification {
-        val controller = mediaSession.controller
-        val metadata = controller.currentMediaItem?.mediaMetadata
+        val metadata = player.currentMediaItem?.mediaMetadata
         val title = metadata?.title?.toString() ?: "SunPlayer"
         val artist = metadata?.artist?.toString() ?: ""
 
@@ -175,8 +174,8 @@ class PlaybackService : MediaSessionService() {
             .addAction(playPauseAction)
             .addAction(nextAction)
             .addAction(stopAction)
-            .setStyle(androidx.media.app.NotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(1) // show play/pause in compact
+            .setStyle(NotificationCompat.MediaStyle()
+                .setShowActionsInCompactView(1) // show play/pause in compact view
             )
 
         largeIcon?.let { builder.setLargeIcon(it) }
