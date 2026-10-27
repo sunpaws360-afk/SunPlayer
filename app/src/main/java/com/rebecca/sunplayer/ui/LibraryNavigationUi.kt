@@ -18,13 +18,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.Color
+import com.rebecca.sunplayer.data.PlaylistSummary
 import com.rebecca.sunplayer.model.AudioTrack
 
 enum class LibraryTab(val label: String) {
     TRACKS("Tracks"),
     ALBUMS("Albums"),
     ARTISTS("Artists"),
-    FAVORITES("Favorites")
+    FAVORITES("Favorites"),
+    PLAYLISTS("Playlists")
 }
 
 data class AlbumGroup(
@@ -209,6 +212,148 @@ fun ArtistsListView(
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             }
+        }
+    }
+}
+
+/**
+ * Body of the Playlists library tab.
+ *
+ * Lists every user playlist with its track count. Tapping a playlist opens the
+ * playlist manager on that playlist; the empty state offers a create action.
+ *
+ * @param playlists        Playlists to display, as observed from the repository.
+ * @param onPlaylistClick  Called with the tapped playlist.
+ * @param onCreatePlaylist Called when the user asks to create a new playlist.
+ * @param modifier         Optional layout modifier.
+ */
+@Composable
+fun PlaylistsListView(
+    playlists: List<PlaylistSummary>,
+    onPlaylistClick: (PlaylistSummary) -> Unit,
+    onCreatePlaylist: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (playlists.isEmpty()) {
+        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "No playlists yet",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(onClick = onCreatePlaylist) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Create playlist")
+                }
+            }
+        }
+    } else {
+        LazyColumn(
+            modifier = modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 96.dp)
+        ) {
+            items(playlists, key = { it.id }) { playlist ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPlaylistClick(playlist) }
+                        .padding(vertical = 10.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.PlaylistPlay,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = playlist.name,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${playlist.trackCount} ${if (playlist.trackCount == 1) "track" else "tracks"}",
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Icon(
+                        Icons.Default.ChevronRight,
+                        contentDescription = "Open playlist",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            }
+        }
+    }
+}
+
+/**
+ * A compact, tappable 5-star rating bar.
+ *
+ * @param rating     Current rating in range [0.0, 5.0].
+ * @param onRate     Called with the new rating when the user taps a star.
+ * @param modifier   Optional layout modifier.
+ * @param starCount  Total number of stars to display (default 5).
+ * @param starSize   Rendered size of each star icon in dp (default 20).
+ */
+@Composable
+fun StarRatingBar(
+    rating: Float,
+    onRate: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    starCount: Int = 5,
+    starSize: Int = 20
+) {
+    val goldColor = Color(0xFFFFC107)
+    val emptyColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        for (i in 1..starCount) {
+            val icon = when {
+                rating >= i -> Icons.Default.Star
+                rating >= i - 0.5f -> Icons.Default.StarHalf
+                else -> Icons.Default.StarBorder
+            }
+            val tint = if (rating >= i - 0.5f) goldColor else emptyColor
+
+            Icon(
+                imageVector = icon,
+                contentDescription = "$i star${if (i == 1) "" else "s"}",
+                tint = tint,
+                modifier = Modifier
+                    .size(starSize.dp)
+                    .clickable { onRate(i.toFloat()) }
+            )
         }
     }
 }
