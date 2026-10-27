@@ -8,7 +8,7 @@ Release setup:
 - [x] Secret scanning + Push Protection enabled
 - [x] Branch protection on `main` (require PR, strict status checks, no force-push/delete)
 - [x] Privacy policy content DONE: docs/privacy.html committed & merged to main (PR #6/#7); accurate to the app
-      (no INTERNET permission, local-only data, backup rules, deletion). Content verified serving-ready.
+      (only network use is the in-app update check, local-only data, backup rules, deletion). Content verified serving-ready.
 - [x] GitHub Pages deploy workflow live (.github/workflows/pages.yml, configure-pages enablement:true).
       NOTE (re-verified 2026-09-29): Pages site does NOT exist yet (API 404). Both paths to create it are
       blocked for this token: (a) GITHUB_TOKEN inside Actions cannot create sites ("Resource not accessible
@@ -20,6 +20,6 @@ Release setup:
       Verify: https://sunpaws360-afk.github.io/SunPlayer/privacy.html returns 200 (Play Console privacy URL).
 - [ ] Confirm the `release` environment protection rules allow an authorized reviewer to approve deployment. If self-review is prevented, a different reviewer must approve; do not disable that protection merely to unblock a run.
 - [ ] Back up keystore + passwords to a password manager / offline encrypted drive NOW.
-- [ ] Push the matching `v<versionName>` tag after the release is ready. The tagged workflow requires all four secrets and fails rather than publishing unsigned artifacts. Approve any pending deployment in GitHub Actions with an authorized reviewer.
+- [ ] Merge the release PR to `main`: the workflow creates the matching `v<versionName>` tag automatically once a new version + `docs/releases/<version>.md` land. Approve the pending `release` deployment in GitHub Actions with an authorized reviewer. (Manual `git push origin v<versionName>` still works.) The tagged workflow requires all four secrets and fails rather than publishing unsigned artifacts.
 - [ ] Verify: sha256sum -c SHA256SUMS.txt; apksigner verify --print-certs shows A9:E4:96:53... (not the debug cert).
 - [ ] Revoke the short-lived PAT when the project wraps up; then wipe sandbox key files per user decision.

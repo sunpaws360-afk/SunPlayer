@@ -51,21 +51,30 @@ audit notes in `docs/HANDOVER.md` and the CI pipeline in
 | Later | F-Droid | built from source | Requires adding an FLOSS license file first (repo currently has none) and no proprietary deps (currently satisfied). |
 | Optional | Amazon / Samsung stores | signed APK/AAB | Each has its own review process. |
 
-## Releasing (fully tag-driven automation)
+## Releasing (automated on merge to main)
 
 1. On a branch: bump `versionCode`/`versionName` in `app/build.gradle.kts` and
    add `docs/releases/<version>.md` (used verbatim as GitHub release notes).
-2. Merge to `main`. Ensure the `release` environment in GitHub has the four
-   `SUNPLAYER_*` secrets and a **required reviewer** (manual approval gate).
-3. `git tag v<versionName> && git push origin v<versionName>` — that single
-   command triggers the whole pipeline: secret scan + verify run first;
-   `release-candidate` validates tag↔version match, builds the signed
-   APK + AAB, generates `SHA256SUMS.txt`, runs the emulator smoke test;
-   `publish` (after environment approval) creates the GitHub Release with
-   APK, AAB, and SHA256SUMS attached and marks it `--latest`.
-4. Sidenotes: `workflow_dispatch` now only runs verification (no release);
-   pushing a tag whose name ≠ `v<versionName>` fails immediately, and a
-   missing changelog file also fails before anything is published.
+2. Open a PR and merge it to `main`. Ensure the `release` environment in GitHub
+   has the four `SUNPLAYER_*` secrets and a **required reviewer** (manual
+   approval gate).
+3. The `Android Build & Release` workflow then does everything: `verify` and
+   `secret-scan` run first, `detect-release` notices the new version (a changelog
+   exists and no `v<version>` tag exists yet), `release-candidate` builds the
+   signed APK + AAB, generates `SHA256SUMS.txt` and runs the emulator smoke test,
+   and `publish` (after environment approval) creates the `v<versionName>` tag
+   itself plus the GitHub Release with APK, AAB and SHA256SUMS attached, marked
+   `--latest`.
+4. Manual path still supported: push `v<versionName>` by hand and the same
+   pipeline runs; the tag is validated against `versionName` first.
+5. Sidenotes: `workflow_dispatch` only runs verification (no release); a version
+   bump without `docs/releases/<version>.md` is skipped with a notice instead of
+   failing; a missing changelog or tag/version mismatch on a manual tag fails
+   before anything is published. Tags created by the workflow use `GITHUB_TOKEN`,
+   which is why tagging and publishing happen inside the same run.
+6. Installed release builds poll the public Releases API at launch and offer any
+   newer release through the in-app updater (user-confirmed download, then
+   Android's installer).
 
 For Play uploads, extend `publish` later with `r0adkll/upload-google-play@v1`
 using a `PLAYSTORE_JSON` service-account secret; keep that JSON out of every

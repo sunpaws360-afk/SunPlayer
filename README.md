@@ -1,11 +1,11 @@
 # SunPlayer
 
 An **offline-first** local music player for Android (Jetpack Compose + Media3).
-No account, no cloud, no ads, no trackers, no telemetry — the core app does not
-even declare the `INTERNET` permission. Nothing you listen to ever leaves your
-device.
+No account, no cloud, no ads, no trackers, no telemetry. The only network access
+is the optional in-app update check against GitHub Releases — nothing you listen
+to ever leaves your device.
 
-Current version: **1.3.0.1** (targets Android 16 / API 36, minSdk 26).
+Current version: **1.4.0** (targets Android 16 / API 36, minSdk 26).
 
 ## Features
 
@@ -14,6 +14,10 @@ Current version: **1.3.0.1** (targets Android 16 / API 36, minSdk 26).
   headphone-unplug pause, and Android Auto compatible
 - Queue management: play next, add to end, reorder, remove, clear upcoming
 - Normal playlists (create / rename / delete / ordered membership) and Favorites
+- Library tabs for Tracks, Albums, Artists, Favorites, and Playlists
+- 0–5 star ratings, persisted per track and editable while a song plays
+- In-app update check: detects a newer signed GitHub release and hands the
+  downloaded APK to Android's installer (never silent, never automatic)
 - Search, sort (title / artist / album / duration), shuffle, repeat modes
 - Persistent play state; failed scans never wipe your existing library
 
@@ -22,7 +26,7 @@ Current version: **1.3.0.1** (targets Android 16 / API 36, minSdk 26).
 | Question | Answer |
 |---|---|
 | What can it access? | Only your audio files, via Android MediaStore (`READ_MEDIA_AUDIO`; `READ_EXTERNAL_STORAGE` ≤ API 32 only). No documents, photos, or messages. |
-| Does it phone home? | No. The APK contains no `INTERNET` permission — verify with `aapt dump permissions`. |
+| Does it phone home? | Only for the update check: a plain HTTPS request to GitHub's public Releases API for the latest version number. No identifiers, no telemetry, no analytics. Everything else is offline. |
 | Where is my data? | Library index, playlists, favorites live in a local Room database on your device. |
 | Can I delete it? | Uninstalling removes the app database. Your music files are untouched. |
 | How are releases signed? | Release-signed with a protected key in CI (never committed). Debug builds are clearly not for distribution. |
@@ -56,12 +60,17 @@ environment variables are set — see [docs/BUILDING.md](docs/BUILDING.md).
 
 ## Releasing (automation)
 
-Push a version tag and GitHub Actions does the rest — secret scan → tests →
-signed APK+AAB → SHA-256 checksums → emulator smoke test → GitHub Release
-(behind a manual approval gate):
+Releases are automatic. Merge a PR to `main` that bumps `versionCode`/`versionName`
+in `app/build.gradle.kts` and adds `docs/releases/<version>.md`; CI runs the
+secret scan, tests, signed APK+AAB build, SHA-256 checksums and emulator smoke
+test, then creates the matching `v<version>` tag and GitHub Release (behind a
+manual approval gate). Approve the deployment to publish — installed release
+builds then offer the update in-app.
+
+Manual tagging still works:
 
 ```bash
-git tag v1.3.0.2 && git push origin v1.3.0.2
+git tag v1.4.0 && git push origin v1.4.0
 ```
 
 Details and channel strategy (Play / AppGallery / F-Droid):

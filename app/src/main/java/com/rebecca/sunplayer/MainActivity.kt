@@ -1,6 +1,7 @@
 package com.rebecca.sunplayer
 
 import android.Manifest
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -46,6 +47,9 @@ import com.rebecca.sunplayer.ui.LibraryTab
 import com.rebecca.sunplayer.ui.LibraryTabBar
 import com.rebecca.sunplayer.ui.PlaylistsListView
 import com.rebecca.sunplayer.ui.StarRatingBar
+import com.rebecca.sunplayer.update.UpdateChecker
+import com.rebecca.sunplayer.update.UpdateInfo
+import com.rebecca.sunplayer.update.UpdateInstaller
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -181,6 +185,19 @@ fun MainScreen(playerManager: AudioPlayerManager) {
     // edited while playing are reflected immediately.
     val currentLibraryTrack = playbackState.currentTrack?.let { current ->
         storedTracks.firstOrNull { it.id == current.id }
+    }
+
+    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+    var updateDownloadProgress by remember { mutableStateOf<Int?>(null) }
+    var updateErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    // The in-app updater is for installed release builds; debug builds must not
+    // nag about store releases during development.
+    LaunchedEffect(Unit) {
+        val isDebuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (!isDebuggable) {
+            updateInfo = UpdateChecker.checkForUpdate(context)
+        }
     }
 
     // Poll position periodically while playing
@@ -613,6 +630,41 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                 playlistTrackToAdd = null
             },
             onDismiss = { playlistTrackToAdd = null }
+        )
+    }
+
+    updateInfo?.let { info ->
+        UpdateAvailableDialog(
+            info = info,
+            currentVersion = UpdateChecker.currentVersionName(context),
+            downloadProgress = updateDownloadProgress,
+            errorMessage = updateErrorMessage,
+            onDownload = {
+                coroutineScope.launch {
+                    updateErrorMessage = null
+                    updateDownloadProgress = 0
+                    val apkFile = UpdateInstaller.download(context, info) { percent ->
+                        updateDownloadProgress = percent
+                    }
+                    updateDownloadProgress = null
+                    if (apkFile != null) {
+                        if (UpdateInstaller.install(context, apkFile)) {
+                            updateInfo = null
+                        } else {
+                            updateErrorMessage =
+                                "Could not open the installer. Allow \"Install unknown apps\" for SunPlayer and try again."
+                        }
+                    } else {
+                        updateErrorMessage = "Download failed. Check your connection and try again."
+                    }
+                }
+            },
+            onDismiss = {
+                if (updateDownloadProgress == null) {
+                    updateInfo = null
+                    updateErrorMessage = null
+                }
+            }
         )
     }
 }

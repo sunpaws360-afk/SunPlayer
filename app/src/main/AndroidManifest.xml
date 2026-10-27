@@ -11,8 +11,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
-    <!-- No INTERNET, no RECORD_AUDIO, no MANAGE_EXTERNAL_STORAGE:
-         SunPlayer is offline-first by design. Do not add these casually. -->
+    <!-- The update checker is SunPlayer's only network consumer: it asks the
+         public GitHub Releases API whether a newer version exists. Library
+         browsing and playback remain fully offline. No RECORD_AUDIO and no
+         MANAGE_EXTERNAL_STORAGE still - do not add those casually. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Needed to hand a downloaded update APK to the system package installer. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:allowBackup="true"
@@ -43,6 +48,17 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+        <!-- Serves the downloaded update APK to the package installer through a
+             one-shot read grant. Not exported; no other files are shared. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

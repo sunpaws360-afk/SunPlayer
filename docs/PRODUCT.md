@@ -7,7 +7,7 @@ SunPlayer is a fast, lightweight, offline-first, private, and modern Android loc
 ## 2. Target Users & Environment
 - **Platform**: Android 8.0+ (API 26+) up to Android 14+ (API 34+).
 - **Target Hardware**: Standard Android smartphones, tablets, and Huawei EMUI/HarmonyOS devices.
-- **Operating Context**: 100% offline, zero internet requirement for core playback and library management.
+- **Operating Context**: Offline for core playback and library management; the only network use is the optional in-app update check (no account, no telemetry, no other network features).
 
 ## 3. Product Principles
 1. **User File Ownership**: The user's audio collection remains intact in the file system. SunPlayer is a fast index and player, never an isolating proprietary vault.

@@ -14,19 +14,25 @@
 </head>
 <body>
 <h1>SunPlayer Privacy Policy</h1>
-<p class="meta">Last updated: 29 September 2026<br>Package: <code>com.rebecca.sunplayer</code></p>
+<p class="meta">Last updated: 28 October 2026<br>Package: <code>com.rebecca.sunplayer</code></p>
 
 <h2>The short version</h2>
-<p>SunPlayer is an <strong>offline-first music player</strong>. It has <strong>no Internet permission</strong>, no account, no ads, no analytics, and no tracking of any kind. It cannot send your data anywhere, even if you wanted it to.</p>
+<p>SunPlayer is an <strong>offline-first music player</strong> with no account, no ads, no analytics, and no tracking of any kind. The only network access is an <strong>optional update check</strong> against GitHub's public release feed, which sends no personal data. Your music, playlists and listening habits never leave your device.</p>
 
 <h2>Data SunPlayer processes</h2>
 <ul>
   <li><strong>Audio files on your device.</strong> On Android 13+ SunPlayer requests <code>READ_MEDIA_AUDIO</code> (on older versions, storage read up to API&nbsp;32) so it can list and play the music already stored on your device. It does not read documents, photos, messages, or call logs.</li>
-  <li><strong>Library index, playlists, favourites, play counts and history.</strong> These are stored in a local database inside the app's private storage on your device. They never leave the device.</li>
+  <li><strong>Library index, playlists, favourites, ratings, play counts and history.</strong> These are stored in a local database inside the app's private storage on your device. They never leave the device.</li>
 </ul>
 
 <h2>What leaves your device</h2>
-<p>Nothing. The app declares no <code>INTERNET</code> permission, makes no network calls, contains no advertising or analytics SDKs, and performs no telemetry.</p>
+<p>One thing only: the <strong>in-app update check</strong>.</p>
+<ul>
+  <li>On installed release builds, SunPlayer may send a standard HTTPS <code>GET</code> request to GitHub's public Releases API (<code>api.github.com/repos/sunpaws360-afk/SunPlayer/releases/latest</code>) to learn the latest published version number.</li>
+  <li>That request carries only what any HTTPS request carries — your IP address (visible to GitHub as the server) and a generic <code>User-Agent</code> string. No library contents, playlists, ratings, listening history, account, or device identifiers are sent.</li>
+  <li>No update is downloaded or installed unless you tap <strong>Download</strong> and then confirm in Android's own package installer. The APK is fetched over HTTPS from GitHub, stored in the app's private cache, and removed after installation.</li>
+  <li>There are no advertising or analytics SDKs, no telemetry, and no other network calls. Debug builds never check for updates.</li>
+</ul>
 
 <h2>Cloud backup</h2>
 <p>If you have Android's built-in backup enabled, the OS may include the app's small local database (playlists/favourites) in your device backup according to Google's Android backup terms. You can disable this in system settings. Cached data and temporary files are excluded from backup.</p>
@@ -39,10 +45,10 @@
 </ul>
 
 <h2>Children's privacy</h2>
-<p>SunPlayer collects no personal information from anyone, including children, because it processes everything locally and transmits nothing.</p>
+<p>SunPlayer collects no personal information from anyone, including children. Everything is processed locally; the only network request is the version check described above, which transmits no personal information.</p>
 
 <h2>Changes to this policy</h2>
-<p>If future versions add optional network features (for example metadata lookup or AI), they will be opt-in with an explicit toggle, and this policy will be updated before such a release. The core player remains fully functional without any network access.</p>
+<p>If future versions add other network features (for example optional metadata lookup or AI), they will be opt-in with an explicit toggle and this policy will be updated before such a release. Core playback and library management remain fully functional without any network access.</p>
 
 <h2>Contact</h2>
 <p>Source and issue tracker: <a href="https://github.com/sunpaws360-afk/SunPlayer">https://github.com/sunpaws360-afk/SunPlayer</a></p>
