@@ -117,12 +117,64 @@ jobs:
           fi
           echo "should_release=${should_release}" >> "$GITHUB_OUTPUT"
 
+  # Guards the release path so a misconfigured signing secret cannot turn main red on every
+  # push. Without it, a missing or malformed SUNPLAYER_KEYSTORE_BASE64 fails release-candidate
+  # on each main push until a tag exists, even though nothing is wrong with the code. This job
+  # runs inside the 'release' environment so it can read the environment-scoped secrets, and
+  # warns instead of failing when they are unusable.
+  release-preflight:
+    name: Release preflight
+    needs: [detect_release]
+    if: ${{ needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+    outputs:
+      signing_ready: ${{ steps.check.outputs.signing_ready }}
+      reason: ${{ steps.check.outputs.reason }}
+    steps:
+      - name: Check that release signing is configured and usable
+        id: check
+        shell: bash
+        env:
+          SUNPLAYER_KEYSTORE_BASE64: ${{ secrets.SUNPLAYER_KEYSTORE_BASE64 }}
+          SUNPLAYER_KEYSTORE_PASSWORD: ${{ secrets.SUNPLAYER_KEYSTORE_PASSWORD }}
+          SUNPLAYER_KEY_ALIAS: ${{ secrets.SUNPLAYER_KEY_ALIAS }}
+          SUNPLAYER_KEY_PASSWORD: ${{ secrets.SUNPLAYER_KEY_PASSWORD }}
+        run: |
+          ready=true
+          reason=""
+          if [ -z "${SUNPLAYER_KEYSTORE_BASE64:-}" ]; then
+            ready=false; reason="SUNPLAYER_KEYSTORE_BASE64 is not set"
+          elif [ -z "${SUNPLAYER_KEYSTORE_PASSWORD:-}" ]; then
+            ready=false; reason="SUNPLAYER_KEYSTORE_PASSWORD is not set"
+          elif [ -z "${SUNPLAYER_KEY_ALIAS:-}" ]; then
+            ready=false; reason="SUNPLAYER_KEY_ALIAS is not set"
+          elif [ -z "${SUNPLAYER_KEY_PASSWORD:-}" ]; then
+            ready=false; reason="SUNPLAYER_KEY_PASSWORD is not set"
+          else
+            umask 077
+            if ! printf '%s' "$SUNPLAYER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/probe.keystore" 2>/dev/null; then
+              ready=false; reason="SUNPLAYER_KEYSTORE_BASE64 is not valid base64"
+            elif [ ! -s "$RUNNER_TEMP/probe.keystore" ]; then
+              ready=false; reason="SUNPLAYER_KEYSTORE_BASE64 decoded to an empty keystore"
+            fi
+            rm -f "$RUNNER_TEMP/probe.keystore"
+          fi
+          if [ "$ready" = "true" ]; then
+            echo "::notice::Release signing is configured; the release build will run."
+          else
+            echo "::warning::Release skipped: ${reason}. Set all four SUNPLAYER_KEYSTORE_* secrets in the 'release' environment, then push a v<versionName> tag (or bump the version) to publish."
+          fi
+          echo "signing_ready=${ready}" >> "$GITHUB_OUTPUT"
+          echo "reason=${reason}" >> "$GITHUB_OUTPUT"
   release-candidate:
     name: Release candidate
     outputs:
       version: ${{ steps.tag.outputs.version }}
-    needs: [verify, secret-scan, detect_release]
-    if: ${{ needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v') }}
+    needs: [verify, secret-scan, detect_release, release-preflight]
+    if: ${{ (needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v')) && needs.release-preflight.outputs.signing_ready == 'true' }}
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -228,8 +280,8 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [release-candidate, secret-scan, detect_release]
-    if: ${{ needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v') }}
+    needs: [release-candidate, secret-scan, detect_release, release-preflight]
+    if: ${{ (needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v')) && needs.release-preflight.outputs.signing_ready == 'true' }}
     runs-on: ubuntu-latest
     environment: release
     permissions:
