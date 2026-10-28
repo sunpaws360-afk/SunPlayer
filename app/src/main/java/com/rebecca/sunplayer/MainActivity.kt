@@ -44,6 +44,8 @@ import com.rebecca.sunplayer.ui.ArtistGroup
 import com.rebecca.sunplayer.ui.ArtistsListView
 import com.rebecca.sunplayer.ui.LibraryTab
 import com.rebecca.sunplayer.ui.LibraryTabBar
+import com.rebecca.sunplayer.ui.PlaylistsListView
+import com.rebecca.sunplayer.ui.StarRatingBar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -175,6 +177,11 @@ fun MainScreen(playerManager: AudioPlayerManager) {
     }
 
     val playbackState by playerManager.playbackState.collectAsState()
+    // The player holds a snapshot of the track; re-read the library row so ratings
+    // edited while playing are reflected immediately.
+    val currentLibraryTrack = playbackState.currentTrack?.let { current ->
+        storedTracks.firstOrNull { it.id == current.id }
+    }
 
     // Poll position periodically while playing
     LaunchedEffect(playbackState.isPlaying) {
@@ -332,32 +339,6 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                 shape = RoundedCornerShape(12.dp)
             )
 
-            FilledTonalButton(
-                onClick = { isPlaylistsExpanded = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.PlaylistPlay, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.Start
-                ) {
-                    Text(if (playlists.isEmpty()) "Create your first playlist" else "Your playlists")
-                    Text(
-                        text = if (playlists.isEmpty()) {
-                            "Organize your music into collections"
-                        } else {
-                            "${playlists.size} playlists · Tap to manage"
-                        },
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-                Icon(Icons.Default.ArrowForward, contentDescription = "Open playlists")
-            }
-
             if (scanError != null) {
                 Text(
                     text = "Library refresh failed. Existing songs were kept.",
@@ -429,6 +410,7 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                         LibraryTab.ARTISTS -> if (activeArtistFilter == null) "${artistGroups.size} artists" else "${filteredTracks.size} songs"
                         LibraryTab.FAVORITES -> "${filteredTracks.size} favorites"
                         LibraryTab.TRACKS -> "${filteredTracks.size} songs"
+                        LibraryTab.PLAYLISTS -> "${playlists.size} ${if (playlists.size == 1) "playlist" else "playlists"}"
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -471,11 +453,25 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                         onArtistClick = { activeArtistFilter = it.name }
                     )
                 }
+                selectedTab == LibraryTab.PLAYLISTS -> {
+                    PlaylistsListView(
+                        playlists = playlists,
+                        onPlaylistClick = { playlist ->
+                            selectedPlaylistId = playlist.id
+                            isPlaylistsExpanded = true
+                        },
+                        onCreatePlaylist = {
+                            selectedPlaylistId = null
+                            isPlaylistsExpanded = true
+                        }
+                    )
+                }
                 filteredTracks.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
                             text = if (searchQuery.isNotEmpty()) "No matching songs found" else when (selectedTab) {
                                 LibraryTab.FAVORITES -> "No favorite songs yet. Tap the heart to star a song!"
+                                LibraryTab.PLAYLISTS -> "No playlists yet. Tap Create playlist to get started."
                                 else -> "No audio files found on your device"
                             },
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -506,6 +502,11 @@ fun MainScreen(playerManager: AudioPlayerManager) {
                                     coroutineScope.launch {
                                         libraryRepository.setFavorite(track.id, track.id !in favoriteIds)
                                     }
+                                },
+                                onSetRating = { newRating ->
+                                    coroutineScope.launch {
+                                        libraryRepository.setRating(track.id, newRating)
+                                    }
                                 }
                             )
                         }
@@ -531,6 +532,14 @@ fun MainScreen(playerManager: AudioPlayerManager) {
             onToggleShuffle = { playerManager.toggleShuffle() },
             onToggleRepeat = { playerManager.toggleRepeat() },
             onOpenQueue = { isQueueExpanded = true },
+            rating = currentLibraryTrack?.rating ?: 0f,
+            onSetRating = { newRating ->
+                playbackState.currentTrack?.let { playing ->
+                    coroutineScope.launch {
+                        libraryRepository.setRating(playing.id, newRating)
+                    }
+                }
+            },
             onDismiss = { isNowPlayingExpanded = false }
         )
     }
@@ -617,7 +626,8 @@ fun TrackItem(
     onAddNext: () -> Unit,
     onAddToEnd: () -> Unit,
     onAddToPlaylist: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onSetRating: (Float) -> Unit
 ) {
     var isQueueMenuExpanded by remember { mutableStateOf(false) }
 
@@ -675,6 +685,12 @@ fun TrackItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                StarRatingBar(
+                    rating = track.rating,
+                    onRate = onSetRating,
+                    starSize = 14
                 )
             }
 
@@ -832,6 +848,8 @@ fun NowPlayingExpandedDialog(
     onToggleShuffle: () -> Unit,
     onToggleRepeat: () -> Unit,
     onOpenQueue: () -> Unit,
+    rating: Float,
+    onSetRating: (Float) -> Unit,
     onDismiss: () -> Unit
 ) {
     ModalBottomSheet(
@@ -879,6 +897,15 @@ fun NowPlayingExpandedDialog(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Rate the track currently playing
+            StarRatingBar(
+                rating = rating,
+                onRate = onSetRating,
+                starSize = 28
             )
 
             Spacer(modifier = Modifier.height(20.dp))
