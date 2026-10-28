@@ -38,8 +38,13 @@ class UpdateCheckerTest {
 
     @Test
     fun `missing trailing components count as zero`() {
-        assertTrue(UpdateChecker.isNewerVersion("1.4", "1.4.0.1"))
-        assertFalse(UpdateChecker.isNewerVersion("1.4.0.1", "1.4"))
+        // "1.4" == "1.4.0.0", which is OLDER than "1.4.0.1".
+        assertFalse(UpdateChecker.isNewerVersion("1.4", "1.4.0.1"))
+        // The reverse direction: "1.4.0.1" is newer than "1.4".
+        assertTrue(UpdateChecker.isNewerVersion("1.4.0.1", "1.4"))
+        // Equal once padded: neither is newer.
+        assertFalse(UpdateChecker.isNewerVersion("1.4", "1.4.0"))
+        assertFalse(UpdateChecker.isNewerVersion("1.4.0", "1.4"))
     }
 
     @Test
