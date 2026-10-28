@@ -5,6 +5,11 @@ Scope: verification only — no files changed, no tags created/pushed, no branch
 Method: every finding below cites a file/line or command output inspected in this repository.
 Categorization: [FACT] verified from files · [RISK] inferred, needs runtime confirmation · [ENHANCEMENT] optional.
 
+> **Update (2026-10-28, v1.4.0):** finding #4 is superseded — `INTERNET` and
+> `REQUEST_INSTALL_PACKAGES` are now declared for the in-app update checker
+> (ADR 007). The update check is the only network consumer; the merged-manifest
+> check from #5 is still worth running on a release APK.
+
 ## Findings table
 
 | # | Finding | Evidence | Severity | Required before release? | Minimal proposed fix |

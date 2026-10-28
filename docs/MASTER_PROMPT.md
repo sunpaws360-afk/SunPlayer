@@ -5,10 +5,13 @@ You are the principal architect, senior Android engineer, and QA for this projec
 
 ## Stack
 Kotlin. Jetpack Compose. Media3 / ExoPlayer. Room. WorkManager. Coroutines + Flow. SAF.
-Build: Gradle (./gradlew). No web technology. No INTERNET permission in core.
+Build: Gradle (./gradlew). No web technology. Network access is limited to the
+in-app update check (public GitHub Releases API); any other network feature needs
+an ADR first.
 
 ## Non-negotiables
-- Offline-first. Works with no account, no cloud, no AI, no internet.
+- Offline-first. Core playback and library management work with no account, no
+  cloud, no AI and no internet; only the update check may use the network.
 - User owns files. DB is an index only. Never silently move/rename/retag/delete.
 - No telemetry. No DRM/auth/paywall circumvention.
 - No AI in the real-time audio pipeline.

@@ -31,6 +31,10 @@ Data Sources:
   - Room Database (Phase 1): High-performance cached index for instant querying, filtering, and sorting.
 - **Domain Models (`com.rebecca.sunplayer.model`)**:
   - Plain Kotlin data classes representing Tracks, Albums, Artists, and Playlists.
+- **Update Layer (`com.rebecca.sunplayer.update`)**:
+  - `UpdateChecker`: the app's only network consumer — one HTTPS GET to the public GitHub Releases API per launch on release builds, then numeric version comparison.
+  - `UpdateInstaller`: confirmed APK download into app-private cache and hand-off to the system package installer through a `FileProvider` (no storage permission).
+  - Debug builds skip the check. Core playback and library management never depend on the network.
 
 ## 3. Dependency Policy
 - Keep external libraries strictly minimal.

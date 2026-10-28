@@ -1,20 +1,35 @@
 name: Android Build & Release
 
-# Defense-in-depth: every job defaults to read-only token access.
-# Only the publish job elevates to contents:write (needed to create a release).
+# Verification runs on every pull request and on pushes to main.
 #
-# Release flow (fully automated): bump versionCode/versionName in
-# app/build.gradle.kts, add docs/releases/<version>.md, merge to main, then
-#   git tag v<version> && git push origin v<version>
-# The tag push runs verify + secret-scan + release-candidate (signed APK/AAB +
-# SHA256SUMS) + publish (GitHub Release). The 'release' environment gate can
-# require manual approval before signing secrets are exposed.
+# Release automation
+# ------------------
+# Merging a PR to main that (a) bumps versionCode/versionName in
+# app/build.gradle.kts and (b) adds docs/releases/<version>.md publishes a
+# release with no manual steps:
+#   * detect_release spots the new version and that no v<version> tag exists;
+#   * release-candidate builds the signed APK/AAB, checksums and emulator test;
+#   * publish creates the v<version> tag and the GitHub Release (marked latest),
+#     which the in-app updater then offers to installed users.
+# The same run does the tagging on purpose: tags pushed with a workflow's own
+# GITHUB_TOKEN do not trigger another workflow run.
+#
+# Manual releases still work: push v<versionName> yourself; the tag is validated
+# against versionName before anything is built.
+#
+# The 'release' environment approval gate applies to both paths, so signing
+# secrets are only exposed after an authorized reviewer approves.
+#
+# Defense-in-depth: every job defaults to read-only token access. Only the
+# publish job elevates to contents:write (tag + release creation).
 permissions:
   contents: read
 
 concurrency:
   group: sunplayer-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a main/tag run: it may be in the middle of a signed release.
+  # Pull request runs are cheap to supersede, so those are cancelled.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 on:
   pull_request:
@@ -22,7 +37,7 @@ on:
   push:
     branches: [ main, master ]
     tags:
-      - 'v*'   # pushing a version tag (e.g. v1.3.0.2) starts the release pipeline
+      - 'v*'   # manual tag push: starts the release pipeline directly
   workflow_dispatch:  # manual run: verify only (no release jobs)
 
 jobs:
@@ -62,12 +77,52 @@ jobs:
           chmod +x ./gradlew
           ./gradlew testDebugUnitTest assembleDebug --stacktrace
 
+  # Runs for every event so release jobs can depend on it unconditionally.
+  # Emits should_release=true only for a push to main whose versionName has a
+  # changelog file and no matching tag yet.
+  detect_release:
+    name: Detect release
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.detect.outputs.should_release }}
+      version: ${{ steps.detect.outputs.version }}
+    steps:
+      - name: Checkout repository (tags are needed to detect existing releases)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Decide whether this push publishes a release
+        id: detect
+        shell: bash
+        run: |
+          version_name=$(grep -E 'versionName *= *"[^"]+"' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ -z "$version_name" ]; then
+            echo "::error::Could not read versionName from app/build.gradle.kts."
+            exit 1
+          fi
+          echo "version=${version_name}" >> "$GITHUB_OUTPUT"
+
+          should_release=false
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            if [ ! -f "docs/releases/${version_name}.md" ]; then
+              echo "::notice::docs/releases/${version_name}.md is missing, so ${version_name} will not be released automatically. Add the changelog file to release it."
+            elif git rev-parse -q --verify "refs/tags/v${version_name}" >/dev/null; then
+              echo "::notice::Tag v${version_name} already exists; nothing to release automatically."
+            else
+              echo "::notice::New version ${version_name} detected on main; queuing an automatic release."
+              should_release=true
+            fi
+          fi
+          echo "should_release=${should_release}" >> "$GITHUB_OUTPUT"
+
   release-candidate:
     name: Release candidate
     outputs:
       version: ${{ steps.tag.outputs.version }}
-    needs: [verify, secret-scan]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [verify, secret-scan, detect_release]
+    if: ${{ needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -75,6 +130,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -85,14 +142,26 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Derive tag and validate it matches the app version
+      - name: Derive version and validate a manual tag
         id: tag
+        shell: bash
         run: |
           version_name=$(grep -E 'versionName *= *"[^"]+"' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
-          tag="${GITHUB_REF_NAME}"
-          expected_tag="v${version_name}"
-          if [ "$tag" != "$expected_tag" ]; then
-            echo "::error::Pushed tag $tag does not match versionName $version_name. Expected $expected_tag."
+          if [ -z "$version_name" ]; then
+            echo "::error::Could not read versionName from app/build.gradle.kts."
+            exit 1
+          fi
+
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            expected_tag="v${version_name}"
+            if [ "${GITHUB_REF_NAME}" != "$expected_tag" ]; then
+              echo "::error::Pushed tag ${GITHUB_REF_NAME} does not match versionName ${version_name}. Expected ${expected_tag}."
+              exit 1
+            fi
+          elif [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            echo "::notice::Automatic release for ${version_name}; the v${version_name} tag will be created by the publish job."
+          else
+            echo "::error::Release builds only run for pushed v* tags or for a main push with a new version."
             exit 1
           fi
           echo "version=${version_name}" >> "$GITHUB_OUTPUT"
@@ -159,8 +228,8 @@ jobs:
 
   publish:
     name: Publish release
-    needs: [release-candidate, secret-scan]
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [release-candidate, secret-scan, detect_release]
+    if: ${{ needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -175,21 +244,46 @@ jobs:
           name: SunPlayer-release-candidate
           path: release-artifacts
 
-      - name: Resolve changelog for this version
+      - name: Resolve version, tag and changelog
+        id: release
+        shell: bash
         env:
           VERSION: ${{ needs.release-candidate.outputs.version }}
         run: |
+          if [ -z "${VERSION}" ]; then
+            echo "::error::release-candidate did not report a version."
+            exit 1
+          fi
+          tag="v${VERSION}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
           file="docs/releases/${VERSION}.md"
           if [ ! -f "$file" ]; then
-            echo "::error::Missing changelog $file - add it on main before pushing the tag."
+            echo "::error::Missing changelog $file - add it on main before releasing."
             exit 1
           fi
           cp "$file" release-notes.md
 
+      - name: Create the release tag (automatic releases only)
+        if: ${{ needs.detect_release.outputs.should_release == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="${{ steps.release.outputs.tag }}"
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+            echo "::notice::Tag ${tag} already exists; leaving it as is."
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${tag}" \
+              -f sha="${GITHUB_SHA}" >/dev/null
+            echo "Created tag ${tag} at ${GITHUB_SHA}."
+          fi
+
       - name: Create GitHub release with artifacts and checksums
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
           gh release create "$TAG" \
             --title "SunPlayer $TAG" \
