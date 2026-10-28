@@ -1,16 +1,22 @@
 # gitleaks configuration for SunPlayer
 # Catches GitHub tokens (classic + fine-grained), private keys, keystore
-# passwords, and Slack/AWS-style secrets in diffs, files, and git history.
+# credentials, and Slack/AWS-style secrets in diffs, files, and git history.
+#
+# IMPORTANT: gitleaks compiles every rule and allowlist regex with RE2. RE2 has
+# no lookahead, no lookbehind and no backreferences. A single unsupported
+# construct makes the scanner panic while translating this config, which then
+# fails the Secret scan job with "results.sarif does not exist" - it never scans
+# anything. Keep patterns to character classes, alternation, anchors and
+# (lazy) quantifiers only.
 title = "SunPlayer gitleaks config"
 
 [extend]
 # Starts from gitleaks' built-in ruleset (detects ghp_, github_pat_, etc.)
 useDefault = true
 
-# Scan the whole line, not just the matched secret-like substring. This lets
-# documentation prose that merely *mentions* keystore/password words (e.g. the
-# handover/audit docs) fall into the allowlist regexes below instead of being
-# flagged by the android-keystore-reference rule.
+# Match allowlist regexes against the whole line, not just the matched secret.
+# This lets documentation prose that merely *mentions* keystore/password words
+# be allowlisted on paths the generic rules would otherwise flag.
 regexTarget = "line"
 
 [[rules]]
@@ -21,8 +27,11 @@ tags = ["password", "secret"]
 
 [[rules]]
 id = "android-keystore-reference"
-description = "Committed keystore file reference with credentials"
-regex = '''(?i)(\.jks|\.keystore)["']?\s*,?.*(password|passwd)'''
+description = "Keystore path on the same line as an assigned password/alias value"
+# Previously this matched any line containing both ".jks" and "password", which
+# caught ordinary documentation. It now requires a real assignment: ":" or "="
+# followed by a non-placeholder value of 6+ characters.
+regex = '''(?i)(\.jks|\.keystore)\b[^\n]{0,120}?(password|passwd|storepass|keypass|keyalias)\s*[:=]\s*["']?[^\s"'$]{6,}'''
 tags = ["keystore"]
 [rules.allowlist]
 paths = ['''docs/.*\.md$''', '''README\.md$''']
@@ -46,13 +55,9 @@ commits = [
     '''5ef4d0fdd558c6b120449ba078d3618b55188a31''',
 ]
 regexes = [
-    # Documentation prose about the signing pipeline: filename + password word
-    # co-occurring on one line with NO quoted assignment is not a credential.
-    '''(?i)(keystore|\.jks).*password(?!\s*[:=]\s*["'][^"']{8,}["'])[^"']*\n?''',
     # Environment-variable indirection used by app/build.gradle.kts and CI
     '''providers\.environmentVariable\("SUNPLAYER_[A-Z_]+"\)''',
     '''\$\{\{\s*secrets\.SUNPLAYER_[A-Z_]+\s*\}\}''',
     # Placeholder values in documentation
     '''your-(password|alias|keystore)''',
 ]
-
