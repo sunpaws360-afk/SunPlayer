@@ -1,34 +1,15 @@
 name: Android Build & Release
 
 # Verification runs on every pull request and on pushes to main.
-#
-# Release automation
-# ------------------
-# Merging a PR to main that (a) bumps versionCode/versionName in
-# app/build.gradle.kts and (b) adds docs/releases/<version>.md publishes a
-# release with no manual steps:
-#   * detect_release spots the new version and that no v<version> tag exists;
-#   * release-candidate builds the signed APK/AAB, checksums and emulator test;
-#   * publish creates the v<version> tag and the GitHub Release (marked latest),
-#     which the in-app updater then offers to installed users.
-# The same run does the tagging on purpose: tags pushed with a workflow's own
-# GITHUB_TOKEN do not trigger another workflow run.
-#
-# Manual releases still work: push v<versionName> yourself; the tag is validated
-# against versionName before anything is built.
-#
-# The 'release' environment approval gate applies to both paths, so signing
-# secrets are only exposed after an authorized reviewer approves.
-#
-# Defense-in-depth: every job defaults to read-only token access. Only the
-# publish job elevates to contents:write (tag + release creation).
+# A new version + matching changelog queues a release candidate automatically.
+# Candidate build/tests run WITHOUT production signing secrets. The protected
+# release environment is entered only after those gates pass; approval there
+# gates signing, signature verification, tag creation, and publication.
 permissions:
   contents: read
 
 concurrency:
   group: sunplayer-${{ github.ref }}
-  # Never cancel a main/tag run: it may be in the middle of a signed release.
-  # Pull request runs are cheap to supersede, so those are cancelled.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 on:
@@ -37,8 +18,8 @@ on:
   push:
     branches: [ main, master ]
     tags:
-      - 'v*'   # manual tag push: starts the release pipeline directly
-  workflow_dispatch:  # manual run: verify only (no release jobs)
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   secret-scan:
@@ -49,7 +30,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Scan working tree and history for leaked secrets
         uses: gitleaks/gitleaks-action@v2
         env:
@@ -62,24 +42,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-
       - name: Run unit tests and debug build
         run: |
           chmod +x ./gradlew
           ./gradlew testDebugUnitTest assembleDebug --stacktrace
 
-  # Runs for every event so release jobs can depend on it unconditionally.
-  # Emits should_release=true only for a push to main whose versionName has a
-  # changelog file and no matching tag yet.
   detect_release:
     name: Detect release
     runs-on: ubuntu-latest
@@ -92,7 +66,6 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-
       - name: Decide whether this push publishes a release
         id: detect
         shell: bash
@@ -102,186 +75,121 @@ jobs:
             echo "::error::Could not read versionName from app/build.gradle.kts."
             exit 1
           fi
-          echo "version=${version_name}" >> "$GITHUB_OUTPUT"
+          echo "version=$version_name" >> "$GITHUB_OUTPUT"
 
           should_release=false
           if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; then
             if [ ! -f "docs/releases/${version_name}.md" ]; then
-              echo "::notice::docs/releases/${version_name}.md is missing, so ${version_name} will not be released automatically. Add the changelog file to release it."
+              echo "::notice::docs/releases/${version_name}.md is missing; automatic release not queued."
             elif git rev-parse -q --verify "refs/tags/v${version_name}" >/dev/null; then
               echo "::notice::Tag v${version_name} already exists; nothing to release automatically."
             else
-              echo "::notice::New version ${version_name} detected on main; queuing an automatic release."
+              echo "::notice::New version ${version_name} detected on main; queuing a release."
               should_release=true
             fi
           fi
-          echo "should_release=${should_release}" >> "$GITHUB_OUTPUT"
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
 
-  # Guards the release path so a misconfigured signing secret cannot turn main red on every
-  # push. Without it, a missing or malformed SUNPLAYER_KEYSTORE_BASE64 fails release-candidate
-  # on each main push until a tag exists, even though nothing is wrong with the code. This job
-  # runs inside the 'release' environment so it can read the environment-scoped secrets, and
-  # warns instead of failing when they are unusable.
-  release-preflight:
-    name: Release preflight
-    needs: [detect_release]
+  # Build/test an unsigned candidate. This job intentionally has no release
+  # environment and receives no production signing secrets.
+  release-candidate:
+    name: Build and test unsigned candidate
+    needs: [verify, secret-scan, detect_release]
     if: ${{ needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
-    environment: release
-    permissions:
-      contents: read
     outputs:
-      signing_ready: ${{ steps.check.outputs.signing_ready }}
-      reason: ${{ steps.check.outputs.reason }}
-    steps:
-      - name: Check that release signing is configured and usable
-        id: check
-        shell: bash
-        env:
-          SUNPLAYER_KEYSTORE_BASE64: ${{ secrets.SUNPLAYER_KEYSTORE_BASE64 }}
-          SUNPLAYER_KEYSTORE_PASSWORD: ${{ secrets.SUNPLAYER_KEYSTORE_PASSWORD }}
-          SUNPLAYER_KEY_ALIAS: ${{ secrets.SUNPLAYER_KEY_ALIAS }}
-          SUNPLAYER_KEY_PASSWORD: ${{ secrets.SUNPLAYER_KEY_PASSWORD }}
-        run: |
-          ready=true
-          reason=""
-          if [ -z "${SUNPLAYER_KEYSTORE_BASE64:-}" ]; then
-            ready=false; reason="SUNPLAYER_KEYSTORE_BASE64 is not set"
-          elif [ -z "${SUNPLAYER_KEYSTORE_PASSWORD:-}" ]; then
-            ready=false; reason="SUNPLAYER_KEYSTORE_PASSWORD is not set"
-          elif [ -z "${SUNPLAYER_KEY_ALIAS:-}" ]; then
-            ready=false; reason="SUNPLAYER_KEY_ALIAS is not set"
-          elif [ -z "${SUNPLAYER_KEY_PASSWORD:-}" ]; then
-            ready=false; reason="SUNPLAYER_KEY_PASSWORD is not set"
-          else
-            umask 077
-            if ! printf '%s' "$SUNPLAYER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/probe.keystore" 2>/dev/null; then
-              ready=false; reason="SUNPLAYER_KEYSTORE_BASE64 is not valid base64"
-            elif [ ! -s "$RUNNER_TEMP/probe.keystore" ]; then
-              ready=false; reason="SUNPLAYER_KEYSTORE_BASE64 decoded to an empty keystore"
-            fi
-            rm -f "$RUNNER_TEMP/probe.keystore"
-          fi
-          if [ "$ready" = "true" ]; then
-            echo "::notice::Release signing is configured; the release build will run."
-          else
-            echo "::warning::Release skipped: ${reason}. Set all four SUNPLAYER_KEYSTORE_* secrets in the 'release' environment, then push a v<versionName> tag (or bump the version) to publish."
-          fi
-          echo "signing_ready=${ready}" >> "$GITHUB_OUTPUT"
-          echo "reason=${reason}" >> "$GITHUB_OUTPUT"
-  release-candidate:
-    name: Release candidate
-    outputs:
-      version: ${{ steps.tag.outputs.version }}
-    needs: [verify, secret-scan, detect_release, release-preflight]
-    if: ${{ (needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v')) && needs.release-preflight.outputs.signing_ready == 'true' }}
-    runs-on: ubuntu-latest
-    environment: release
-    permissions:
-      contents: read
+      version: ${{ steps.metadata.outputs.version }}
+      version_code: ${{ steps.metadata.outputs.version_code }}
+      application_id: ${{ steps.metadata.outputs.application_id }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
       - name: Derive version and validate a manual tag
-        id: tag
+        id: metadata
         shell: bash
         run: |
           version_name=$(grep -E 'versionName *= *"[^"]+"' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
-          if [ -z "$version_name" ]; then
-            echo "::error::Could not read versionName from app/build.gradle.kts."
+          version_code=$(grep -E 'versionCode *= *[0-9]+' app/build.gradle.kts | head -n 1 | sed -E 's/.*versionCode *= *([0-9]+).*/\1/')
+          application_id=$(grep -E 'applicationId *= *"[^"]+"' app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ -z "$version_name" ] || [ -z "$version_code" ] || [ -z "$application_id" ]; then
+            echo "::error::Could not derive versionName, versionCode, or applicationId from app/build.gradle.kts."
             exit 1
           fi
-
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             expected_tag="v${version_name}"
             if [ "${GITHUB_REF_NAME}" != "$expected_tag" ]; then
-              echo "::error::Pushed tag ${GITHUB_REF_NAME} does not match versionName ${version_name}. Expected ${expected_tag}."
+              echo "::error::Tag ${GITHUB_REF_NAME} does not match versionName ${version_name}; expected ${expected_tag}."
               exit 1
             fi
-          elif [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF}" = "refs/heads/main" ]; then
-            echo "::notice::Automatic release for ${version_name}; the v${version_name} tag will be created by the publish job."
-          else
-            echo "::error::Release builds only run for pushed v* tags or for a main push with a new version."
+          elif [ "${GITHUB_EVENT_NAME}" != "push" ] || [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Release candidates only run for a pushed v* tag or a new version on main."
             exit 1
           fi
-          echo "version=${version_name}" >> "$GITHUB_OUTPUT"
+          echo "version=$version_name" >> "$GITHUB_OUTPUT"
+          echo "version_code=$version_code" >> "$GITHUB_OUTPUT"
+          echo "application_id=$application_id" >> "$GITHUB_OUTPUT"
 
-      - name: Configure release signing
-        id: signing
+      - name: Build unsigned release APK and AAB
+        run: ./gradlew assembleRelease bundleRelease --stacktrace
+
+      - name: Stage candidate and record source metadata
+        shell: bash
         env:
-          SUNPLAYER_KEYSTORE_BASE64: ${{ secrets.SUNPLAYER_KEYSTORE_BASE64 }}
-          SUNPLAYER_KEYSTORE_PASSWORD: ${{ secrets.SUNPLAYER_KEYSTORE_PASSWORD }}
-          SUNPLAYER_KEY_ALIAS: ${{ secrets.SUNPLAYER_KEY_ALIAS }}
-          SUNPLAYER_KEY_PASSWORD: ${{ secrets.SUNPLAYER_KEY_PASSWORD }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          VERSION_CODE: ${{ steps.metadata.outputs.version_code }}
+          APPLICATION_ID: ${{ steps.metadata.outputs.application_id }}
         run: |
-          if [ -z "${SUNPLAYER_KEYSTORE_BASE64:-}" ] || \
-             [ -z "${SUNPLAYER_KEYSTORE_PASSWORD:-}" ] || \
-             [ -z "${SUNPLAYER_KEY_ALIAS:-}" ] || \
-             [ -z "${SUNPLAYER_KEY_PASSWORD:-}" ]; then
-            echo "::error::All four release-signing secrets must be configured in the release environment."
-            exit 1
-          fi
+          set -euo pipefail
+          mkdir -p release-candidate
+          apk="app/build/outputs/apk/release/app-release-unsigned.apk"
+          aab="app/build/outputs/bundle/release/app-release.aab"
+          test -s "$apk" || { echo "::error::Unsigned release APK not found at $apk"; exit 1; }
+          test -s "$aab" || { echo "::error::Release AAB not found at $aab"; exit 1; }
+          cp "$apk" release-candidate/candidate-unsigned.apk
+          cp "$aab" release-candidate/candidate-unsigned.aab
+          {
+            echo "version=$VERSION"
+            echo "version_code=$VERSION_CODE"
+            echo "application_id=$APPLICATION_ID"
+            echo "source_sha=$GITHUB_SHA"
+          } > release-candidate/release-metadata.env
+          sha256sum release-candidate/candidate-unsigned.apk release-candidate/candidate-unsigned.aab > release-candidate/UNSIGNED-SHA256SUMS.txt
+          cat release-candidate/release-metadata.env
+          cat release-candidate/UNSIGNED-SHA256SUMS.txt
 
-          umask 077
-          printf '%s' "$SUNPLAYER_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sunplayer-release.keystore"
-          if [ ! -s "$RUNNER_TEMP/sunplayer-release.keystore" ]; then
-            echo "::error::SUNPLAYER_KEYSTORE_BASE64 decoded to an empty keystore."
-            exit 1
-          fi
-          echo "keystore_path=$RUNNER_TEMP/sunplayer-release.keystore" >> "$GITHUB_OUTPUT"
-
-      - name: Build signed release artifacts
-        env:
-          SUNPLAYER_KEYSTORE_PATH: ${{ steps.signing.outputs.keystore_path }}
-          SUNPLAYER_KEYSTORE_PASSWORD: ${{ secrets.SUNPLAYER_KEYSTORE_PASSWORD }}
-          SUNPLAYER_KEY_ALIAS: ${{ secrets.SUNPLAYER_KEY_ALIAS }}
-          SUNPLAYER_KEY_PASSWORD: ${{ secrets.SUNPLAYER_KEY_PASSWORD }}
-        run: |
-          ./gradlew testDebugUnitTest assembleRelease bundleRelease --stacktrace
-
-      - name: Remove decoded keystore from the runner immediately after signing
-        if: always()
-        run: rm -f "$RUNNER_TEMP/sunplayer-release.keystore"
-      - name: Generate SHA-256 checksums for sideload verification
-        run: |
-          cd app/build/outputs
-          sha256sum apk/release/app-release.apk bundle/release/app-release.aab > "$GITHUB_WORKSPACE/SHA256SUMS.txt"
-          cat "$GITHUB_WORKSPACE/SHA256SUMS.txt"
-
-      - name: Run instrumentation smoke test
+      - name: Run Android 16 instrumentation smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 36
           arch: x86_64
           profile: pixel_2
           script: ./gradlew connectedDebugAndroidTest --stacktrace
 
-      - name: Upload release candidate artifacts
+      - name: Upload tested unsigned candidate
         uses: actions/upload-artifact@v4
         with:
-          name: SunPlayer-release-candidate
-          path: |
-            app/build/outputs/apk/release/app-release.apk
-            app/build/outputs/bundle/release/app-release.aab
-            SHA256SUMS.txt
+          name: SunPlayer-unsigned-candidate
+          path: release-candidate/
           if-no-files-found: error
+          retention-days: 7
 
-  publish:
-    name: Publish release
-    needs: [release-candidate, secret-scan, detect_release, release-preflight]
-    if: ${{ (needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v')) && needs.release-preflight.outputs.signing_ready == 'true' }}
+  # This is the ONLY job that enters the protected release environment. Configure
+  # required reviewers on Settings > Environments > release. No signing secrets
+  # are available to candidate builds or instrumentation tests.
+  sign-and-publish:
+    name: Approve, sign, verify, and publish
+    needs: [release-candidate, secret-scan, detect_release]
+    if: ${{ needs.detect_release.outputs.should_release == 'true' || startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -289,58 +197,151 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Download release candidate artifacts
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Setup Android SDK tools
+        uses: android-actions/setup-android@v3
+      - name: Download tested unsigned candidate
         uses: actions/download-artifact@v4
         with:
-          name: SunPlayer-release-candidate
-          path: release-artifacts
+          name: SunPlayer-unsigned-candidate
+          path: release-candidate
 
-      - name: Resolve version, tag and changelog
+      - name: Validate metadata and prepare signing tools
+        id: tools
+        shell: bash
+        env:
+          VERSION: ${{ needs.release-candidate.outputs.version }}
+          VERSION_CODE: ${{ needs.release-candidate.outputs.version_code }}
+          APPLICATION_ID: ${{ needs.release-candidate.outputs.application_id }}
+        run: |
+          set -euo pipefail
+          source release-candidate/release-metadata.env
+          test "$version" = "$VERSION" || { echo "::error::Candidate version metadata mismatch."; exit 1; }
+          test "$version_code" = "$VERSION_CODE" || { echo "::error::Candidate versionCode metadata mismatch."; exit 1; }
+          test "$application_id" = "$APPLICATION_ID" || { echo "::error::Candidate applicationId metadata mismatch."; exit 1; }
+          test "$source_sha" = "$GITHUB_SHA" || { echo "::error::Candidate source SHA does not match this workflow commit."; exit 1; }
+          sdkmanager "build-tools;36.0.0" >/dev/null
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          test -x "$build_tools/apksigner" || { echo "::error::apksigner unavailable."; exit 1; }
+          test -x "$build_tools/zipalign" || { echo "::error::zipalign unavailable."; exit 1; }
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" || { echo "::error::apkanalyzer unavailable."; exit 1; }
+          echo "build_tools=$build_tools" >> "$GITHUB_OUTPUT"
+          echo "apkanalyzer=$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" >> "$GITHUB_OUTPUT"
+
+      - name: Decode and validate release keystore credentials
+        id: signing
+        shell: bash
+        env:
+          SUNPLAYER_KEYSTORE_BASE64: ${{ secrets.SUNPLAYER_KEYSTORE_BASE64 }}
+          SUNPLAYER_KEYSTORE_PASSWORD: ${{ secrets.SUNPLAYER_KEYSTORE_PASSWORD }}
+          SUNPLAYER_KEY_ALIAS: ${{ secrets.SUNPLAYER_KEY_ALIAS }}
+          SUNPLAYER_KEY_PASSWORD: ${{ secrets.SUNPLAYER_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUNPLAYER_KEYSTORE_BASE64:-}" ] || [ -z "${SUNPLAYER_KEYSTORE_PASSWORD:-}" ] || [ -z "${SUNPLAYER_KEY_ALIAS:-}" ] || [ -z "${SUNPLAYER_KEY_PASSWORD:-}" ]; then
+            echo "::error::All four signing secrets must be set in the protected release environment."
+            exit 1
+          fi
+          umask 077
+          keystore="$RUNNER_TEMP/sunplayer-release.keystore"
+          if ! printf '%s' "$SUNPLAYER_KEYSTORE_BASE64" | base64 --decode > "$keystore"; then
+            rm -f "$keystore"
+            echo "::error::SUNPLAYER_KEYSTORE_BASE64 is invalid Base64."
+            exit 1
+          fi
+          test -s "$keystore" || { rm -f "$keystore"; echo "::error::Decoded keystore is empty."; exit 1; }
+          # This validates the keystore password and alias without printing secrets.
+          keytool -list -keystore "$keystore" -storepass:env SUNPLAYER_KEYSTORE_PASSWORD -alias "$SUNPLAYER_KEY_ALIAS" >/dev/null
+          echo "keystore_path=$keystore" >> "$GITHUB_OUTPUT"
+
+      - name: Sign and verify APK and AAB
+        id: artifacts
+        shell: bash
+        env:
+          KEYSTORE_PATH: ${{ steps.signing.outputs.keystore_path }}
+          SUNPLAYER_KEYSTORE_PASSWORD: ${{ secrets.SUNPLAYER_KEYSTORE_PASSWORD }}
+          SUNPLAYER_KEY_ALIAS: ${{ secrets.SUNPLAYER_KEY_ALIAS }}
+          SUNPLAYER_KEY_PASSWORD: ${{ secrets.SUNPLAYER_KEY_PASSWORD }}
+          BUILD_TOOLS: ${{ steps.tools.outputs.build_tools }}
+          APKANALYZER: ${{ steps.tools.outputs.apkanalyzer }}
+          EXPECTED_VERSION: ${{ needs.release-candidate.outputs.version }}
+          EXPECTED_VERSION_CODE: ${{ needs.release-candidate.outputs.version_code }}
+          EXPECTED_APPLICATION_ID: ${{ needs.release-candidate.outputs.application_id }}
+        run: |
+          set -euo pipefail
+          unsigned_apk=release-candidate/candidate-unsigned.apk
+          unsigned_aab=release-candidate/candidate-unsigned.aab
+          aligned_apk="$RUNNER_TEMP/sunplayer-aligned.apk"
+          signed_apk=release-candidate/SunPlayer.apk
+          signed_aab=release-candidate/SunPlayer.aab
+
+          "$BUILD_TOOLS/zipalign" -f -p 4 "$unsigned_apk" "$aligned_apk"
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$KEYSTORE_PATH" \
+            --ks-key-alias "$SUNPLAYER_KEY_ALIAS" \
+            --ks-pass env:SUNPLAYER_KEYSTORE_PASSWORD \
+            --key-pass env:SUNPLAYER_KEY_PASSWORD \
+            --out "$signed_apk" "$aligned_apk"
+          jarsigner \
+            -keystore "$KEYSTORE_PATH" \
+            -storepass:env SUNPLAYER_KEYSTORE_PASSWORD \
+            -keypass:env SUNPLAYER_KEY_PASSWORD \
+            -signedjar "$signed_aab" "$unsigned_aab" "$SUNPLAYER_KEY_ALIAS"
+
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$signed_apk"
+          jarsigner -verify -strict "$signed_aab"
+          "$BUILD_TOOLS/zipalign" -c -p 4 "$signed_apk"
+
+          actual_id=$("$APKANALYZER" manifest application-id "$signed_apk")
+          actual_version=$("$APKANALYZER" manifest version-name "$signed_apk")
+          actual_code=$("$APKANALYZER" manifest version-code "$signed_apk")
+          test "$actual_id" = "$EXPECTED_APPLICATION_ID" || { echo "::error::APK applicationId mismatch: $actual_id"; exit 1; }
+          test "$actual_version" = "$EXPECTED_VERSION" || { echo "::error::APK version mismatch: $actual_version"; exit 1; }
+          test "$actual_code" = "$EXPECTED_VERSION_CODE" || { echo "::error::APK versionCode mismatch: $actual_code"; exit 1; }
+
+          rm -f "$aligned_apk"
+          sha256sum "$signed_apk" "$signed_aab" > release-candidate/SHA256SUMS.txt
+          cat release-candidate/SHA256SUMS.txt
+
+      - name: Remove decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sunplayer-release.keystore" "$RUNNER_TEMP/sunplayer-aligned.apk"
+
+      - name: Resolve release notes and reject an existing release
         id: release
         shell: bash
         env:
           VERSION: ${{ needs.release-candidate.outputs.version }}
-        run: |
-          if [ -z "${VERSION}" ]; then
-            echo "::error::release-candidate did not report a version."
-            exit 1
-          fi
-          tag="v${VERSION}"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-
-          file="docs/releases/${VERSION}.md"
-          if [ ! -f "$file" ]; then
-            echo "::error::Missing changelog $file - add it on main before releasing."
-            exit 1
-          fi
-          cp "$file" release-notes.md
-
-      - name: Create the release tag (automatic releases only)
-        if: ${{ needs.detect_release.outputs.should_release == 'true' }}
-        env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
-          tag="${{ steps.release.outputs.tag }}"
-          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
-            echo "::notice::Tag ${tag} already exists; leaving it as is."
-          else
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f ref="refs/tags/${tag}" \
-              -f sha="${GITHUB_SHA}" >/dev/null
-            echo "Created tag ${tag} at ${GITHUB_SHA}."
+          set -euo pipefail
+          tag="v$VERSION"
+          notes="docs/releases/$VERSION.md"
+          test -s "$notes" || { echo "::error::Missing release notes $notes."; exit 1; }
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::GitHub Release $tag already exists; refusing to overwrite it."
+            exit 1
           fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          cp "$notes" release-notes.md
 
-      - name: Create GitHub release with artifacts and checksums
+      - name: Publish verified release artifacts
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
+          set -euo pipefail
           gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
             --title "SunPlayer $TAG" \
             --notes-file release-notes.md \
             --latest \
-            release-artifacts/app-release.apk \
-            release-artifacts/app-release.aab \
-            release-artifacts/SHA256SUMS.txt
+            release-candidate/SunPlayer.apk \
+            release-candidate/SunPlayer.aab \
+            release-candidate/SHA256SUMS.txt
