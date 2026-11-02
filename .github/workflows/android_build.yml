@@ -90,18 +90,19 @@ jobs:
             -camera-front none
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
 
             adb_timeout=180
-            adb_deadline=$((SECONDS + adb_timeout))
+            adb_attempt=0
             echo "Waiting for the API 36 emulator to become ADB-ready..."
-            while (( SECONDS < adb_deadline )); do
+            while [ "$adb_attempt" -lt 36 ]; do
               adb devices -l || true
               device_state="$(adb devices | awk 'NR > 1 && $1 ~ /^emulator-/ { print $2; exit }')"
               if [ "$device_state" = "device" ]; then
                 break
               fi
               echo "Emulator state: ${device_state:-not present}; waiting..."
+              adb_attempt=$((adb_attempt + 1))
               sleep 5
             done
 
@@ -113,13 +114,14 @@ jobs:
             fi
 
             boot_timeout=240
-            boot_deadline=$((SECONDS + boot_timeout))
+            boot_attempt=0
             echo "Waiting for Android boot completion..."
-            while (( SECONDS < boot_deadline )); do
+            while [ "$boot_attempt" -lt 48 ]; do
               boot_state="$(adb shell getprop sys.boot_completed 2>/dev/null || true)"
               if [ "$boot_state" = "1" ]; then
                 break
               fi
+              boot_attempt=$((boot_attempt + 1))
               sleep 5
             done
 
@@ -271,18 +273,19 @@ jobs:
             -camera-front none
           disable-animations: true
           script: |
-            set -euo pipefail
+            set -eu
 
             adb_timeout=180
-            adb_deadline=$((SECONDS + adb_timeout))
+            adb_attempt=0
             echo "Waiting for the API 36 emulator to become ADB-ready..."
-            while (( SECONDS < adb_deadline )); do
+            while [ "$adb_attempt" -lt 36 ]; do
               adb devices -l || true
               device_state="$(adb devices | awk 'NR > 1 && $1 ~ /^emulator-/ { print $2; exit }')"
               if [ "$device_state" = "device" ]; then
                 break
               fi
               echo "Emulator state: ${device_state:-not present}; waiting..."
+              adb_attempt=$((adb_attempt + 1))
               sleep 5
             done
 
@@ -294,13 +297,14 @@ jobs:
             fi
 
             boot_timeout=240
-            boot_deadline=$((SECONDS + boot_timeout))
+            boot_attempt=0
             echo "Waiting for Android boot completion..."
-            while (( SECONDS < boot_deadline )); do
+            while [ "$boot_attempt" -lt 48 ]; do
               boot_state="$(adb shell getprop sys.boot_completed 2>/dev/null || true)"
               if [ "$boot_state" = "1" ]; then
                 break
               fi
+              boot_attempt=$((boot_attempt + 1))
               sleep 5
             done
 
