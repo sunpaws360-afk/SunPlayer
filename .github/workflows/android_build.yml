@@ -131,7 +131,7 @@ jobs:
               exit 1
             fi
 
-            api_level="$(adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\\r' || true)"
+            api_level="$(adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)"
             if [ "$api_level" != "36" ]; then
               echo "::error::Expected API 36, but emulator reports API ${api_level:-unknown}."
               adb devices -l || true
