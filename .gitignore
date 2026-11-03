@@ -1,1 +1,37 @@
 .scratch/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Local Android / Gradle
+local.properties
+.gradle/
+**/build/
+
+# Local signing material
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+signing/
+secrets/
+release-signing/
+
+# Local environment and credential files
+.env
+.env.*
+*.env
+*.local
+*.secret
+service-account*.json
+
+# Generated secret-scan reports
+gitleaks-report.json

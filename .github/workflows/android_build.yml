@@ -54,6 +54,96 @@ jobs:
           chmod +x ./gradlew
           ./gradlew testDebugUnitTest assembleDebug --stacktrace
 
+
+  # Run API 36 instrumentation on pull requests too. The release-candidate
+  # job below is intentionally release-only, so it cannot prove PR emulator
+  # readiness or provide a required PR status check.
+  instrumentation:
+    name: Android 16 instrumentation
+    needs: [verify, secret-scan]
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Run Android 16 instrumentation smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: >-
+            -no-window
+            -gpu swiftshader_indirect
+            -no-snapshot
+            -noaudio
+            -no-boot-anim
+            -camera-back none
+            -camera-front none
+          disable-animations: true
+          script: |
+            set -eu
+
+            adb_timeout=180
+            adb_attempt=0
+            echo "Waiting for the API 36 emulator to become ADB-ready..."
+            while [ "$adb_attempt" -lt 36 ]; do
+              adb devices -l || true
+              device_state="$(adb devices | awk 'NR > 1 && $1 ~ /^emulator-/ { print $2; exit }')"
+              if [ "$device_state" = "device" ]; then
+                break
+              fi
+              echo "Emulator state: ${device_state:-not present}; waiting..."
+              adb_attempt=$((adb_attempt + 1))
+              sleep 5
+            done
+
+            device_state="$(adb devices | awk 'NR > 1 && $1 ~ /^emulator-/ { print $2; exit }')"
+            if [ "$device_state" != "device" ]; then
+              echo "::error::Emulator did not become ADB-ready within ${adb_timeout}s."
+              adb devices -l || true
+              exit 1
+            fi
+
+            boot_timeout=240
+            boot_attempt=0
+            echo "Waiting for Android boot completion..."
+            while [ "$boot_attempt" -lt 48 ]; do
+              boot_state="$(adb shell getprop sys.boot_completed 2>/dev/null || true)"
+              if [ "$boot_state" = "1" ]; then
+                break
+              fi
+              boot_attempt=$((boot_attempt + 1))
+              sleep 5
+            done
+
+            boot_state="$(adb shell getprop sys.boot_completed 2>/dev/null || true)"
+            if [ "$boot_state" != "1" ]; then
+              echo "::error::Android boot did not complete within ${boot_timeout}s."
+              adb devices -l || true
+              adb shell getprop ro.product.model ro.build.version.release ro.build.version.sdk 2>/dev/null || true
+              exit 1
+            fi
+
+            api_level="$(adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)"
+            if [ "$api_level" != "36" ]; then
+              echo "::error::Expected API 36, but emulator reports API ${api_level:-unknown}."
+              adb devices -l || true
+              adb shell getprop ro.build.version.release ro.build.version.sdk 2>/dev/null || true
+              exit 1
+            fi
+
+            echo "Emulator ready on API ${api_level}; running instrumentation tests."
+            ./gradlew connectedDebugAndroidTest --stacktrace
+
   detect_release:
     name: Detect release
     runs-on: ubuntu-latest
@@ -173,7 +263,69 @@ jobs:
           api-level: 36
           arch: x86_64
           profile: pixel_2
-          script: ./gradlew connectedDebugAndroidTest --stacktrace
+          emulator-options: >-
+            -no-window
+            -gpu swiftshader_indirect
+            -no-snapshot
+            -noaudio
+            -no-boot-anim
+            -camera-back none
+            -camera-front none
+          disable-animations: true
+          script: |
+            set -eu
+
+            adb_timeout=180
+            adb_attempt=0
+            echo "Waiting for the API 36 emulator to become ADB-ready..."
+            while [ "$adb_attempt" -lt 36 ]; do
+              adb devices -l || true
+              device_state="$(adb devices | awk 'NR > 1 && $1 ~ /^emulator-/ { print $2; exit }')"
+              if [ "$device_state" = "device" ]; then
+                break
+              fi
+              echo "Emulator state: ${device_state:-not present}; waiting..."
+              adb_attempt=$((adb_attempt + 1))
+              sleep 5
+            done
+
+            device_state="$(adb devices | awk 'NR > 1 && $1 ~ /^emulator-/ { print $2; exit }')"
+            if [ "$device_state" != "device" ]; then
+              echo "::error::Emulator did not become ADB-ready within ${adb_timeout}s."
+              adb devices -l || true
+              exit 1
+            fi
+
+            boot_timeout=240
+            boot_attempt=0
+            echo "Waiting for Android boot completion..."
+            while [ "$boot_attempt" -lt 48 ]; do
+              boot_state="$(adb shell getprop sys.boot_completed 2>/dev/null || true)"
+              if [ "$boot_state" = "1" ]; then
+                break
+              fi
+              boot_attempt=$((boot_attempt + 1))
+              sleep 5
+            done
+
+            boot_state="$(adb shell getprop sys.boot_completed 2>/dev/null || true)"
+            if [ "$boot_state" != "1" ]; then
+              echo "::error::Android boot did not complete within ${boot_timeout}s."
+              adb devices -l || true
+              adb shell getprop ro.product.model ro.build.version.release ro.build.version.sdk 2>/dev/null || true
+              exit 1
+            fi
+
+            api_level="$(adb shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)"
+            if [ "$api_level" != "36" ]; then
+              echo "::error::Expected API 36, but emulator reports API ${api_level:-unknown}."
+              adb devices -l || true
+              adb shell getprop ro.build.version.release ro.build.version.sdk 2>/dev/null || true
+              exit 1
+            fi
+
+            echo "Emulator ready on API ${api_level}; running instrumentation tests."
+            ./gradlew connectedDebugAndroidTest --stacktrace
 
       - name: Upload tested unsigned candidate
         uses: actions/upload-artifact@v4
